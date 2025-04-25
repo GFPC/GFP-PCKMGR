@@ -62,15 +62,43 @@ def setup_git_repo():
         if not repo.remotes:
             logger.info("No remote found, adding origin...")
             # Get repository URL from current directory
-            current_repo = git.Repo('.')
-            origin_url = current_repo.remotes.origin.url
-            repo.create_remote('origin', origin_url)
-            logger.info(f"Added remote origin: {origin_url}")
+            try:
+                current_repo = git.Repo('.')
+                origin_url = current_repo.remotes.origin.url
+                repo.create_remote('origin', origin_url)
+                logger.info(f"Added remote origin: {origin_url}")
+            except Exception as e:
+                logger.error(f"Failed to get origin URL from current repo: {str(e)}")
+                # Try to get URL from git config
+                try:
+                    result = subprocess.run(
+                        ['git', 'config', '--get', 'remote.origin.url'],
+                        capture_output=True,
+                        text=True,
+                        cwd='/opt/gfp-pckmgr'
+                    )
+                    if result.returncode == 0:
+                        origin_url = result.stdout.strip()
+                        repo.create_remote('origin', origin_url)
+                        logger.info(f"Added remote origin from git config: {origin_url}")
+                    else:
+                        raise Exception("Could not get origin URL from git config")
+                except Exception as e:
+                    logger.error(f"Failed to get origin URL from git config: {str(e)}")
+                    raise
         
         # Configure git
         with repo.config_writer() as git_config:
             git_config.set_value('user', 'name', 'GFP Package Manager')
             git_config.set_value('user', 'email', 'bot@gfp-pckmgr')
+        
+        # Verify remote configuration
+        try:
+            repo.remotes.origin.fetch()
+            logger.info("Successfully verified remote configuration")
+        except Exception as e:
+            logger.error(f"Failed to verify remote configuration: {str(e)}")
+            raise
         
         logger.info("Git repository configured successfully")
         return repo
@@ -117,13 +145,22 @@ async def check_and_notify():
                 # Try to fix remote configuration
                 try:
                     logger.info("Attempting to fix remote configuration...")
-                    current_repo = git.Repo('.')
-                    origin_url = current_repo.remotes.origin.url
-                    if repo.remotes:
-                        repo.delete_remote('origin')
-                    repo.create_remote('origin', origin_url)
-                    logger.info(f"Recreated remote origin: {origin_url}")
-                    continue
+                    # Get URL from git config
+                    result = subprocess.run(
+                        ['git', 'config', '--get', 'remote.origin.url'],
+                        capture_output=True,
+                        text=True,
+                        cwd='/opt/gfp-pckmgr'
+                    )
+                    if result.returncode == 0:
+                        origin_url = result.stdout.strip()
+                        if repo.remotes:
+                            repo.delete_remote('origin')
+                        repo.create_remote('origin', origin_url)
+                        logger.info(f"Recreated remote origin: {origin_url}")
+                        continue
+                    else:
+                        raise Exception("Could not get origin URL from git config")
                 except Exception as e:
                     logger.error(f"Failed to fix remote configuration: {str(e)}")
                     continue
