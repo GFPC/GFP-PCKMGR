@@ -45,6 +45,20 @@ systemctl daemon-reload
 systemctl enable gfp-pckmgr
 systemctl start gfp-pckmgr
 
+# Check service status
+echo "Checking service status..."
+sleep 2  # Give the service some time to start
+systemctl status gfp-pckmgr
+
+# Show logs if service failed
+if ! systemctl is-active --quiet gfp-pckmgr; then
+    echo "Service failed to start. Showing logs:"
+    journalctl -u gfp-pckmgr -n 50 --no-pager
+    echo "Please check the logs above for errors"
+    exit 1
+fi
+
 echo "Installation completed successfully!"
 echo "The bot is now running as a systemd service."
-echo "You can check its status with: systemctl status gfp-pckmgr" 
+echo "You can check its status with: systemctl status gfp-pckmgr"
+echo "You can view logs with: journalctl -u gfp-pckmgr -f" 

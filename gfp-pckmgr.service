@@ -7,9 +7,13 @@ Type=simple
 User=root
 WorkingDirectory=/opt/gfp-pckmgr
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONPATH=/opt/gfp-pckmgr"
 ExecStart=/usr/bin/python3 /opt/gfp-pckmgr/gfp_pckmgr.py
 Restart=always
 RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=gfp-pckmgr
 
 [Install]
 WantedBy=multi-user.target 
