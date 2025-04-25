@@ -23,57 +23,77 @@ logger = logging.getLogger(__name__)
 # Configuration
 REPO_PATH = '/opt/gfp-pckmgr'
 REMOTE_URL = 'https://github.com/GFPC/GFP-PCKMGR.git'
-DEFAULT_BRANCH = 'main'  # Или 'master' - уточните для вашего репозитория
+DEFAULT_BRANCH = 'main'
 CHECK_INTERVAL = 300  # 5 minutes
 
 
-def handle_local_changes(repo):
-    """Handle local changes by stashing them."""
+def backup_local_files():
+    """Backup locally modified files before overwriting them."""
     try:
-        if repo.is_dirty():
-            logger.warning("Found uncommitted changes - stashing them")
-            repo.git.stash('save', '--include-untracked', 'Auto-stash by GFP Updater')
-            return True
-        return False
+        backup_dir = os.path.join(REPO_PATH, 'backup')
+        os.makedirs(backup_dir, exist_ok=True)
+
+        for file in ['check_updates.py', 'gfp_pckmgr.py']:
+            src = os.path.join(REPO_PATH, file)
+            if os.path.exists(src):
+                dst = os.path.join(backup_dir, f"{file}.bak.{int(time.time())}")
+                shutil.copy2(src, dst)
+                logger.info(f"Backed up {file} to {dst}")
+        return True
     except Exception as e:
-        logger.error(f"Failed to stash changes: {str(e)}")
-        raise
+        logger.error(f"Backup failed: {str(e)}")
+        return False
 
 
 def setup_git_repo():
-    """Initialize or update git repository with proper error handling."""
+    """Initialize or clean up git repository."""
     try:
         # Create directory if not exists
         os.makedirs(REPO_PATH, exist_ok=True)
 
-        # Initialize or open repository
+        # Check if this is a git repo
         if not os.path.exists(os.path.join(REPO_PATH, '.git')):
             logger.info("Initializing new repository")
             repo = git.Repo.init(REPO_PATH)
             origin = repo.create_remote('origin', REMOTE_URL)
-            origin.fetch()
 
-            # Try to checkout default branch
+            # First time setup
             try:
-                branch = DEFAULT_BRANCH
-                repo.create_head(branch, origin.refs[branch])
-                repo.heads[branch].set_tracking_branch(origin.refs[branch])
-                repo.heads[branch].checkout()
-            except Exception as e:
-                logger.warning(f"Failed to checkout {branch}: {str(e)}")
-                # Fallback to any available branch
-                for ref in origin.refs:
-                    if ref.name.startswith('origin/'):
-                        branch = ref.name.split('/')[-1]
-                        repo.create_head(branch, origin.refs[branch])
-                        repo.heads[branch].set_tracking_branch(origin.refs[branch])
-                        repo.heads[branch].checkout()
-                        break
+                origin.fetch()
+                # Try to checkout default branch
+                try:
+                    branch = DEFAULT_BRANCH
+                    repo.create_head(branch, origin.refs[branch])
+                    repo.heads[branch].set_tracking_branch(origin.refs[branch])
+                    repo.heads[branch].checkout()
+                except:
+                    # Fallback to any available branch
+                    for ref in origin.refs:
+                        if ref.name.startswith('origin/'):
+                            branch = ref.name.split('/')[-1]
+                            repo.create_head(branch, origin.refs[branch])
+                            repo.heads[branch].set_tracking_branch(origin.refs[branch])
+                            repo.heads[branch].checkout()
+                            break
+            except Exception as fetch_error:
+                logger.warning(f"Initial fetch failed: {str(fetch_error)}")
+                # Empty repository case
+                with open(os.path.join(REPO_PATH, '.gitignore'), 'w') as f:
+                    f.write('backup/\n')
+                repo.git.add('.gitignore')
+                repo.git.commit('-m', 'Initial commit')
         else:
             repo = git.Repo(REPO_PATH)
             logger.info("Using existing repository")
 
-            # Ensure remote is configured
+            # Backup local changes before any operations
+            backup_local_files()
+
+            # Reset any local changes
+            repo.git.reset('--hard')
+            repo.git.clean('-fd')
+
+            # Configure remote
             if 'origin' not in repo.remotes:
                 origin = repo.create_remote('origin', REMOTE_URL)
             else:
@@ -81,26 +101,20 @@ def setup_git_repo():
                 if origin.url != REMOTE_URL:
                     origin.set_url(REMOTE_URL)
 
-            # Handle local changes before any operations
-            stashed = handle_local_changes(repo)
-
-            # Fetch latest changes
+            # Fetch updates
             origin.fetch()
 
-            # Get current branch or use default
-            try:
-                branch = repo.active_branch.name
-            except:
-                branch = DEFAULT_BRANCH
-
             # Reset to remote branch
+            branch = DEFAULT_BRANCH
             try:
                 repo.git.reset('--hard', f'origin/{branch}')
-            except Exception as e:
-                logger.error(f"Failed to reset to origin/{branch}: {str(e)}")
-                if stashed:
-                    repo.git.stash('pop')
-                raise
+            except:
+                # Try any available branch
+                for ref in origin.refs:
+                    if ref.name.startswith('origin/'):
+                        branch = ref.name.split('/')[-1]
+                        repo.git.reset('--hard', f'origin/{branch}')
+                        break
 
         # Configure git user
         with repo.config_writer() as git_config:
@@ -109,7 +123,7 @@ def setup_git_repo():
             if not git_config.has_option('user', 'email'):
                 git_config.set_value('user', 'email', 'bot@gfp-pckmgr')
 
-        logger.info(f"Repository setup complete. Active branch: {repo.active_branch.name}")
+        logger.info(f"Repository ready. Branch: {repo.active_branch.name}")
         return repo
 
     except Exception as e:
@@ -118,17 +132,14 @@ def setup_git_repo():
 
 
 def check_updates(repo):
-    """Check for and apply updates with proper error handling."""
+    """Check for and apply updates."""
     try:
-        # Handle local changes first
-        stashed = handle_local_changes(repo)
-
-        # Fetch all changes
-        repo.remotes.origin.fetch()
-
-        # Get current and remote commits
+        # Get current state
         branch = repo.active_branch.name
         current_commit = repo.head.commit
+
+        # Fetch updates
+        repo.remotes.origin.fetch()
         remote_commit = repo.remotes.origin.refs[branch].commit
 
         logger.info(f"Local: {current_commit.hexsha[:7]}, Remote: {remote_commit.hexsha[:7]}")
@@ -136,31 +147,26 @@ def check_updates(repo):
         # Check if update needed
         if current_commit.hexsha == remote_commit.hexsha:
             logger.info("No updates available")
-            if stashed:
-                repo.git.stash('pop')
             return False
 
         # Apply updates
-        try:
-            logger.info(f"Updating to {remote_commit.hexsha[:7]}")
-            repo.git.reset('--hard', f'origin/{branch}')
+        logger.info(f"Updating to {remote_commit.hexsha[:7]}")
 
-            # Restart services if needed
-            if stashed:
-                logger.info("Restarting services after update")
-                subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
-                subprocess.run(['systemctl', 'restart', 'gfp-pckmgr-updater'], check=True)
+        # Backup local changes
+        backup_local_files()
 
-            return True
+        # Reset to remote
+        repo.git.reset('--hard', f'origin/{branch}')
 
-        except Exception as e:
-            logger.error(f"Update failed: {str(e)}")
-            if stashed:
-                repo.git.stash('pop')
-            raise
+        # Restart services
+        logger.info("Restarting services")
+        subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
+        subprocess.run(['systemctl', 'restart', 'gfp-pckmgr-updater'], check=True)
+
+        return True
 
     except Exception as e:
-        logger.error(f"Update check failed: {str(e)}")
+        logger.error(f"Update failed: {str(e)}")
         raise
 
 
