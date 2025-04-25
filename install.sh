@@ -16,6 +16,15 @@ mkdir -p $INSTALL_DIR
 # Install Python dependencies
 pip3 install -r requirements.txt
 
+# Create .env file if it doesn't exist
+if [ ! -f .env ]; then
+    echo "Creating .env file from template..."
+    cp env.example .env
+    echo "Please edit .env file and add your bot token and allowed users"
+    echo "Then run the installation script again"
+    exit 1
+fi
+
 # Copy files to installation directory
 cp gfp_pckmgr.py $INSTALL_DIR/
 cp .env $INSTALL_DIR/
@@ -27,6 +36,7 @@ cp gfp-pckmgr.service /etc/systemd/system/
 # Set permissions
 chmod 755 $INSTALL_DIR/gfp_pckmgr.py
 chmod 644 /etc/systemd/system/gfp-pckmgr.service
+chmod 600 $INSTALL_DIR/.env
 
 # Reload systemd
 systemctl daemon-reload
