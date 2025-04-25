@@ -41,6 +41,12 @@ chmod 600 $INSTALL_DIR/.env
 # Reload systemd
 systemctl daemon-reload
 
+# Stop service if it's running
+if systemctl is-active --quiet gfp-pckmgr; then
+    echo "Stopping existing service..."
+    systemctl stop gfp-pckmgr
+fi
+
 # Enable and start service
 systemctl enable gfp-pckmgr
 systemctl start gfp-pckmgr
