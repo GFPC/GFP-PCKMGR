@@ -4,8 +4,8 @@ import logging
 import subprocess
 import tempfile
 import time
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -277,6 +277,125 @@ async def _execute_and_reply(update: Update, command: str):
         execution_time = time.time() - start_time
         await update.message.reply_text(f"❌ Error executing command in {execution_time:.2f} seconds: {str(e)}")
 
+async def dir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show directory contents with navigation buttons."""
+    if update.effective_user.id not in ALLOWED_USERS:
+        await update.message.reply_text("You are not authorized to use this bot.")
+        return
+    
+    # Get current directory
+    pwd_result = subprocess.run(
+        "pwd",
+        shell=True,
+        capture_output=True,
+        text=True
+    )
+    current_dir = pwd_result.stdout.strip()
+    
+    # Get directory contents
+    ls_result = subprocess.run(
+        f"ls -la {current_dir}",
+        shell=True,
+        capture_output=True,
+        text=True
+    )
+    
+    # Create keyboard buttons
+    keyboard = []
+    current_row = []
+    
+    # Get directories and files
+    entries = os.listdir(current_dir)
+    for entry in entries:
+        if len(current_row) == 2:  # 2 buttons per row
+            keyboard.append(current_row)
+            current_row = []
+        
+        # Skip . and .. directories
+        if entry in ['.', '..']:
+            continue
+            
+        # Check if it's a directory
+        full_path = os.path.join(current_dir, entry)
+        if os.path.isdir(full_path):
+            current_row.append(InlineKeyboardButton(f"📁 {entry}", callback_data=f"dir_{full_path}"))
+    
+    # Add remaining buttons
+    if current_row:
+        keyboard.append(current_row)
+    
+    # Add STOP SELECTING button
+    keyboard.append([InlineKeyboardButton("🛑 STOP SELECTING", callback_data="stop_dir")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Send message with directory contents and buttons
+    await update.message.reply_text(
+        f"📁 Current directory: {current_dir}\n\n"
+        f"Directory contents:\n"
+        f"```\n{ls_result.stdout}\n```",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def dir_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle directory navigation button presses."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "stop_dir":
+        await query.edit_message_text("Directory navigation stopped.")
+        return
+    
+    # Extract directory path from callback data
+    target_dir = query.data.replace("dir_", "")
+    
+    # Get directory contents
+    ls_result = subprocess.run(
+        f"ls -la {target_dir}",
+        shell=True,
+        capture_output=True,
+        text=True
+    )
+    
+    # Create keyboard buttons
+    keyboard = []
+    current_row = []
+    
+    # Get directories and files
+    entries = os.listdir(target_dir)
+    for entry in entries:
+        if len(current_row) == 2:  # 2 buttons per row
+            keyboard.append(current_row)
+            current_row = []
+        
+        # Skip . and .. directories
+        if entry in ['.', '..']:
+            continue
+            
+        # Check if it's a directory
+        full_path = os.path.join(target_dir, entry)
+        if os.path.isdir(full_path):
+            current_row.append(InlineKeyboardButton(f"📁 {entry}", callback_data=f"dir_{full_path}"))
+    
+    # Add remaining buttons
+    if current_row:
+        keyboard.append(current_row)
+    
+    # Add STOP SELECTING button
+    keyboard.append([InlineKeyboardButton("🛑 STOP SELECTING", callback_data="stop_dir")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Update message with new directory contents and buttons
+    await query.edit_message_text(
+        f"📁 Current directory: {target_dir}\n\n"
+        f"Directory contents:\n"
+        f"```\n{ls_result.stdout}\n```",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
 def main():
     """Start the bot."""
     if not BOT_TOKEN:
@@ -297,6 +416,10 @@ def main():
     application.add_handler(CommandHandler("cmd_mode", cmd_mode))
     application.add_handler(CommandHandler("exit", exit_command))
     application.add_handler(CommandHandler("load_journal", load_journal))
+    application.add_handler(CommandHandler("dir", dir_command))
+    
+    # Add callback query handler for directory navigation
+    application.add_handler(CallbackQueryHandler(dir_button, pattern="^dir_|stop_dir$"))
     
     # Add message handler for command mode
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
