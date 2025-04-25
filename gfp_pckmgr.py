@@ -3,6 +3,7 @@ import os
 import logging
 import subprocess
 import tempfile
+import time
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from dotenv import load_dotenv
@@ -226,7 +227,18 @@ async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _execute_and_reply(update: Update, command: str):
     """Execute a command and send the response."""
+    start_time = time.time()
     try:
+        # Get current directory
+        pwd_result = subprocess.run(
+            "pwd",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+        current_dir = pwd_result.stdout.strip()
+
+        # Execute the command
         result = subprocess.run(
             command,
             shell=True,
@@ -235,10 +247,21 @@ async def _execute_and_reply(update: Update, command: str):
             timeout=30
         )
         
+        # Calculate execution time
+        execution_time = time.time() - start_time
+        
         if result.returncode == 0:
-            response = f"✅ Command executed successfully:\n\n{result.stdout}"
+            response = (
+                f"✅ Command executed successfully in {execution_time:.2f} seconds\n"
+                f"📁 Current directory: {current_dir}\n\n"
+                f"{result.stdout}"
+            )
         else:
-            response = f"❌ Command failed with error:\n\n{result.stderr}"
+            response = (
+                f"❌ Command failed with error in {execution_time:.2f} seconds\n"
+                f"📁 Current directory: {current_dir}\n\n"
+                f"{result.stderr}"
+            )
         
         # Split response if it's too long
         if len(response) > 4000:
@@ -248,9 +271,11 @@ async def _execute_and_reply(update: Update, command: str):
             await update.message.reply_text(response)
             
     except subprocess.TimeoutExpired:
-        await update.message.reply_text("❌ Command execution timed out after 30 seconds.")
+        execution_time = time.time() - start_time
+        await update.message.reply_text(f"❌ Command execution timed out after {execution_time:.2f} seconds.")
     except Exception as e:
-        await update.message.reply_text(f"❌ Error executing command: {str(e)}")
+        execution_time = time.time() - start_time
+        await update.message.reply_text(f"❌ Error executing command in {execution_time:.2f} seconds: {str(e)}")
 
 def main():
     """Start the bot."""
