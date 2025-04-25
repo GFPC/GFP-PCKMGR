@@ -522,12 +522,13 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         repo.remotes.origin.fetch()
         remote_commit = repo.remotes.origin.refs.master.commit
         remote_hash = hashlib.md5(str(remote_commit).encode()).hexdigest()
+        delimiter = "\n"
         
         # Format version information
         current_version = (
             "📦 *Current Version*\n\n"
             f"*Commit:* {current_commit.hexsha[:7]}\n"
-            f"*Message:* {current_commit.message.split('\n')[0]}\n"
+            f"*Message:* {current_commit.message.split(delimiter)[0]}\n"
             f"*Author:* {current_commit.author.name}\n"
             f"*Date:* {current_commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"*Commit Hash (MD5):* `{current_hash}`\n\n"
@@ -542,7 +543,7 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             available_version = (
                 "\n🆕 *Available Update*\n\n"
                 f"*Commit:* {remote_commit.hexsha[:7]}\n"
-                f"*Message:* {remote_commit.message.split('\n')[0]}\n"
+                f"*Message:* {remote_commit.message.split(delimiter)[0]}\n"
                 f"*Author:* {remote_commit.author.name}\n"
                 f"*Date:* {remote_commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S')}\n"
                 f"*Commit Hash (MD5):* `{remote_hash}`\n\n"
