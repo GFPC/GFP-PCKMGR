@@ -3,8 +3,12 @@ import os
 import time
 import git
 import asyncio
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+import shutil
+import stat
+import subprocess
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from dotenv import load_dotenv
+from telegram.ext import ContextTypes
 
 # Load environment variables
 load_dotenv()
@@ -21,6 +25,32 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ALLOWED_USERS = [int(user_id) for user_id in os.getenv('ALLOWED_USERS', '').split(',') if user_id]
 CHECK_INTERVAL = 300  # Check every 5 minutes
+
+def set_file_permissions():
+    """Set correct permissions for all files."""
+    try:
+        # Set permissions for all Python files
+        for file in ['gfp_pckmgr.py', 'check_updates.py']:
+            file_path = os.path.join('/opt/gfp-pckmgr', file)
+            if os.path.exists(file_path):
+                os.chmod(file_path, 0o755)
+                logger.info(f"Set permissions for {file} to 755")
+        
+        # Set permissions for service files
+        for file in ['gfp-pckmgr.service', 'gfp-pckmgr-updater.service']:
+            file_path = os.path.join('/etc/systemd/system', file)
+            if os.path.exists(file_path):
+                os.chmod(file_path, 0o644)
+                logger.info(f"Set permissions for {file} to 644")
+        
+        # Set permissions for .env file
+        env_path = os.path.join('/opt/gfp-pckmgr', '.env')
+        if os.path.exists(env_path):
+            os.chmod(env_path, 0o600)
+            logger.info("Set permissions for .env to 600")
+            
+    except Exception as e:
+        logger.error(f"Error setting file permissions: {str(e)}")
 
 async def check_and_notify():
     """Check for updates and notify users if available."""
@@ -119,8 +149,48 @@ async def check_and_notify():
         # Wait before next check
         await asyncio.sleep(CHECK_INTERVAL)
 
+async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle update confirmation button presses."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "update_cancel":
+        await query.edit_message_text("Update cancelled.")
+        return
+    
+    if query.data == "update_confirm":
+        try:
+            # Get repository
+            repo = git.Repo('/opt/gfp-pckmgr')
+            
+            # Pull latest changes
+            repo.remotes.origin.pull()
+            
+            # Set correct permissions
+            set_file_permissions()
+            
+            # Install new dependencies if requirements.txt changed
+            if 'requirements.txt' in [item.a_path for item in repo.index.diff('HEAD~1')]:
+                subprocess.run(['pip3', 'install', '-r', 'requirements.txt'], check=True)
+            
+            # Reload systemd to pick up any service file changes
+            subprocess.run(['systemctl', 'daemon-reload'], check=True)
+            
+            # Restart the service
+            subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
+            
+            await query.edit_message_text(
+                "✅ Update completed successfully!\n"
+                "The bot will restart momentarily."
+            )
+            
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error during update: {str(e)}")
+
 if __name__ == '__main__':
     try:
+        # Set initial permissions
+        set_file_permissions()
         asyncio.run(check_and_notify())
     except KeyboardInterrupt:
         logger.info("Update checker stopped by user")

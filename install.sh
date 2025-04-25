@@ -46,12 +46,19 @@ fi
 cp gfp-pckmgr.service /etc/systemd/system/
 cp gfp-pckmgr-updater.service /etc/systemd/system/
 
-# Set permissions
+# Set correct permissions
+echo "Setting file permissions..."
+# Python scripts
 chmod 755 $INSTALL_DIR/gfp_pckmgr.py
 chmod 755 $INSTALL_DIR/check_updates.py
+# Service files
 chmod 644 /etc/systemd/system/gfp-pckmgr.service
 chmod 644 /etc/systemd/system/gfp-pckmgr-updater.service
+# Configuration files
 chmod 600 $INSTALL_DIR/.env
+# Git repository
+chmod -R 755 $INSTALL_DIR/.git
+find $INSTALL_DIR/.git -type f -exec chmod 644 {} \;
 
 # Reload systemd
 systemctl daemon-reload
