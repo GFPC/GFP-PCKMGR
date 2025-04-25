@@ -52,6 +52,33 @@ def set_file_permissions():
     except Exception as e:
         logger.error(f"Error setting file permissions: {str(e)}")
 
+def setup_git_repo():
+    """Setup git repository with proper remote configuration."""
+    try:
+        repo = git.Repo('/opt/gfp-pckmgr')
+        logger.info("Git repository initialized")
+        
+        # Check if remote exists
+        if not repo.remotes:
+            logger.info("No remote found, adding origin...")
+            # Get repository URL from current directory
+            current_repo = git.Repo('.')
+            origin_url = current_repo.remotes.origin.url
+            repo.create_remote('origin', origin_url)
+            logger.info(f"Added remote origin: {origin_url}")
+        
+        # Configure git
+        with repo.config_writer() as git_config:
+            git_config.set_value('user', 'name', 'GFP Package Manager')
+            git_config.set_value('user', 'email', 'bot@gfp-pckmgr')
+        
+        logger.info("Git repository configured successfully")
+        return repo
+        
+    except Exception as e:
+        logger.error(f"Error setting up git repository: {str(e)}")
+        raise
+
 async def check_and_notify():
     """Check for updates and notify users if available."""
     if not BOT_TOKEN:
@@ -70,13 +97,10 @@ async def check_and_notify():
         return
     
     try:
-        repo = git.Repo('/opt/gfp-pckmgr')
-        logger.info("Git repository initialized successfully")
-    except git.exc.InvalidGitRepositoryError:
-        logger.error("Not a valid git repository. Please run 'git init' in /opt/gfp-pckmgr")
-        return
+        repo = setup_git_repo()
+        logger.info("Git repository setup completed")
     except Exception as e:
-        logger.error(f"Failed to initialize git repository: {str(e)}")
+        logger.error(f"Failed to setup git repository: {str(e)}")
         return
     
     last_commit = None
@@ -85,12 +109,24 @@ async def check_and_notify():
         try:
             # Fetch latest changes
             try:
+                logger.info("Fetching from remote...")
                 repo.remotes.origin.fetch()
-                logger.debug("Successfully fetched from remote")
+                logger.info("Fetch completed successfully")
             except git.exc.GitCommandError as e:
-                logger.warning(f"Failed to fetch from remote: {str(e)}")
-                # Continue with local repository if fetch fails
-                pass
+                logger.error(f"Failed to fetch from remote: {str(e)}")
+                # Try to fix remote configuration
+                try:
+                    logger.info("Attempting to fix remote configuration...")
+                    current_repo = git.Repo('.')
+                    origin_url = current_repo.remotes.origin.url
+                    if repo.remotes:
+                        repo.delete_remote('origin')
+                    repo.create_remote('origin', origin_url)
+                    logger.info(f"Recreated remote origin: {origin_url}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Failed to fix remote configuration: {str(e)}")
+                    continue
             
             # Get current commit
             current_commit = repo.head.commit.hexsha
