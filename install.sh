@@ -14,11 +14,12 @@ INSTALL_DIR="/opt/gfp-pckmgr"
 mkdir -p $INSTALL_DIR
 
 # Install Python dependencies
-pip3 install python-telegram-bot python-dotenv
+pip3 install -r requirements.txt
 
 # Copy files to installation directory
 cp gfp_pckmgr.py $INSTALL_DIR/
 cp .env $INSTALL_DIR/
+cp requirements.txt $INSTALL_DIR/
 
 # Copy service file
 cp gfp-pckmgr.service /etc/systemd/system/
