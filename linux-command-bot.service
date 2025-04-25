@@ -1,0 +1,15 @@
+[Unit]
+Description=GFP Package Manager Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/gfp-pckmgr
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/usr/bin/python3 /opt/gfp-pckmgr/gfp_pckmgr.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 
