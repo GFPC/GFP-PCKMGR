@@ -27,47 +27,48 @@ DEFAULT_BRANCH = 'main'  # Или 'master' - уточните для вашег�
 CHECK_INTERVAL = 300  # 5 minutes
 
 
-def get_remote_branch(repo):
-    """Determine the default branch from remote repository."""
+def handle_local_changes(repo):
+    """Handle local changes by stashing them."""
     try:
-        # Fetch all remote branches
-        repo.git.fetch('--all')
-
-        # Try to get default branch from remote
-        remote_head = repo.git.ls_remote('--symref', 'origin', 'HEAD')
-        for line in remote_head.split('\n'):
-            if 'ref:' in line:
-                return line.split('refs/heads/')[-1].split()[0]
-
-        # Fallback to common branch names
-        for branch in ['main', 'master']:
-            if f'origin/{branch}' in repo.references:
-                return branch
-
-        raise Exception("Cannot determine default branch from remote")
+        if repo.is_dirty():
+            logger.warning("Found uncommitted changes - stashing them")
+            repo.git.stash('save', '--include-untracked', 'Auto-stash by GFP Updater')
+            return True
+        return False
     except Exception as e:
-        logger.error(f"Error detecting remote branch: {str(e)}")
-        return DEFAULT_BRANCH  # Fallback
+        logger.error(f"Failed to stash changes: {str(e)}")
+        raise
 
 
 def setup_git_repo():
-    """Initialize or update git repository."""
+    """Initialize or update git repository with proper error handling."""
     try:
         # Create directory if not exists
         os.makedirs(REPO_PATH, exist_ok=True)
 
-        # Initialize repository
+        # Initialize or open repository
         if not os.path.exists(os.path.join(REPO_PATH, '.git')):
             logger.info("Initializing new repository")
             repo = git.Repo.init(REPO_PATH)
             origin = repo.create_remote('origin', REMOTE_URL)
             origin.fetch()
 
-            # Determine and checkout default branch
-            branch = get_remote_branch(repo)
-            repo.create_head(branch, origin.refs[branch])
-            repo.heads[branch].set_tracking_branch(origin.refs[branch])
-            repo.heads[branch].checkout()
+            # Try to checkout default branch
+            try:
+                branch = DEFAULT_BRANCH
+                repo.create_head(branch, origin.refs[branch])
+                repo.heads[branch].set_tracking_branch(origin.refs[branch])
+                repo.heads[branch].checkout()
+            except Exception as e:
+                logger.warning(f"Failed to checkout {branch}: {str(e)}")
+                # Fallback to any available branch
+                for ref in origin.refs:
+                    if ref.name.startswith('origin/'):
+                        branch = ref.name.split('/')[-1]
+                        repo.create_head(branch, origin.refs[branch])
+                        repo.heads[branch].set_tracking_branch(origin.refs[branch])
+                        repo.heads[branch].checkout()
+                        break
         else:
             repo = git.Repo(REPO_PATH)
             logger.info("Using existing repository")
@@ -77,15 +78,29 @@ def setup_git_repo():
                 origin = repo.create_remote('origin', REMOTE_URL)
             else:
                 origin = repo.remotes.origin
-                origin.set_url(REMOTE_URL)
+                if origin.url != REMOTE_URL:
+                    origin.set_url(REMOTE_URL)
 
-            # Determine current branch
-            branch = get_remote_branch(repo)
-            if branch not in repo.heads:
-                repo.create_head(branch, origin.refs[branch])
+            # Handle local changes before any operations
+            stashed = handle_local_changes(repo)
 
-            repo.heads[branch].set_tracking_branch(origin.refs[branch])
-            repo.heads[branch].checkout()
+            # Fetch latest changes
+            origin.fetch()
+
+            # Get current branch or use default
+            try:
+                branch = repo.active_branch.name
+            except:
+                branch = DEFAULT_BRANCH
+
+            # Reset to remote branch
+            try:
+                repo.git.reset('--hard', f'origin/{branch}')
+            except Exception as e:
+                logger.error(f"Failed to reset to origin/{branch}: {str(e)}")
+                if stashed:
+                    repo.git.stash('pop')
+                raise
 
         # Configure git user
         with repo.config_writer() as git_config:
@@ -94,11 +109,7 @@ def setup_git_repo():
             if not git_config.has_option('user', 'email'):
                 git_config.set_value('user', 'email', 'bot@gfp-pckmgr')
 
-        # Verify repository state
-        if repo.bare:
-            raise Exception("Repository is bare")
-
-        logger.info(f"Repository ready. Branch: {repo.active_branch.name}")
+        logger.info(f"Repository setup complete. Active branch: {repo.active_branch.name}")
         return repo
 
     except Exception as e:
@@ -107,8 +118,11 @@ def setup_git_repo():
 
 
 def check_updates(repo):
-    """Check for and apply updates."""
+    """Check for and apply updates with proper error handling."""
     try:
+        # Handle local changes first
+        stashed = handle_local_changes(repo)
+
         # Fetch all changes
         repo.remotes.origin.fetch()
 
@@ -122,31 +136,26 @@ def check_updates(repo):
         # Check if update needed
         if current_commit.hexsha == remote_commit.hexsha:
             logger.info("No updates available")
+            if stashed:
+                repo.git.stash('pop')
             return False
 
-        # Stash local changes if any
-        stashed = False
-        if repo.is_dirty():
-            logger.info("Stashing local changes")
-            repo.git.stash('save', '--keep-index', 'Auto-stash before update')
-            stashed = True
-
+        # Apply updates
         try:
-            # Reset to remote branch
+            logger.info(f"Updating to {remote_commit.hexsha[:7]}")
             repo.git.reset('--hard', f'origin/{branch}')
-            logger.info(f"Updated to commit: {repo.head.commit.hexsha[:7]}")
 
             # Restart services if needed
             if stashed:
-                logger.info("Restarting services")
+                logger.info("Restarting services after update")
                 subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
                 subprocess.run(['systemctl', 'restart', 'gfp-pckmgr-updater'], check=True)
 
             return True
 
         except Exception as e:
+            logger.error(f"Update failed: {str(e)}")
             if stashed:
-                logger.info("Restoring stashed changes")
                 repo.git.stash('pop')
             raise
 
