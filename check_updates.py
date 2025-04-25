@@ -4,6 +4,7 @@ import logging
 import time
 import git
 import subprocess
+import shutil
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -23,7 +24,6 @@ logger = logging.getLogger(__name__)
 # Configuration
 REPO_PATH = '/opt/gfp-pckmgr'
 REMOTE_URL = 'https://github.com/GFPC/GFP-PCKMGR.git'
-DEFAULT_BRANCH = 'main'
 CHECK_INTERVAL = 300  # 5 minutes
 
 
@@ -51,47 +51,17 @@ def setup_git_repo():
         # Create directory if not exists
         os.makedirs(REPO_PATH, exist_ok=True)
 
-        # Check if this is a git repo
-        if not os.path.exists(os.path.join(REPO_PATH, '.git')):
-            logger.info("Initializing new repository")
-            repo = git.Repo.init(REPO_PATH)
-            origin = repo.create_remote('origin', REMOTE_URL)
-
-            # First time setup
-            try:
-                origin.fetch()
-                # Try to checkout default branch
-                try:
-                    branch = DEFAULT_BRANCH
-                    repo.create_head(branch, origin.refs[branch])
-                    repo.heads[branch].set_tracking_branch(origin.refs[branch])
-                    repo.heads[branch].checkout()
-                except:
-                    # Fallback to any available branch
-                    for ref in origin.refs:
-                        if ref.name.startswith('origin/'):
-                            branch = ref.name.split('/')[-1]
-                            repo.create_head(branch, origin.refs[branch])
-                            repo.heads[branch].set_tracking_branch(origin.refs[branch])
-                            repo.heads[branch].checkout()
-                            break
-            except Exception as fetch_error:
-                logger.warning(f"Initial fetch failed: {str(fetch_error)}")
-                # Empty repository case
-                with open(os.path.join(REPO_PATH, '.gitignore'), 'w') as f:
-                    f.write('backup/\n')
-                repo.git.add('.gitignore')
-                repo.git.commit('-m', 'Initial commit')
-        else:
+        try:
             repo = git.Repo(REPO_PATH)
             logger.info("Using existing repository")
 
             # Backup local changes before any operations
-            backup_local_files()
+            if not backup_local_files():
+                logger.warning("Failed to backup files, continuing anyway")
 
             # Reset any local changes
             repo.git.reset('--hard')
-            repo.git.clean('-fd')
+            repo.git.clean('-fd', '--exclude=backup')
 
             # Configure remote
             if 'origin' not in repo.remotes:
@@ -104,17 +74,46 @@ def setup_git_repo():
             # Fetch updates
             origin.fetch()
 
-            # Reset to remote branch
-            branch = DEFAULT_BRANCH
+            # Determine active branch
             try:
-                repo.git.reset('--hard', f'origin/{branch}')
+                branch = repo.active_branch.name
             except:
-                # Try any available branch
-                for ref in origin.refs:
+                branch = 'master'  # Default fallback
+
+            # Verify branch exists
+            if f'origin/{branch}' not in repo.references:
+                # Try to find any existing branch
+                for ref in repo.references:
                     if ref.name.startswith('origin/'):
                         branch = ref.name.split('/')[-1]
-                        repo.git.reset('--hard', f'origin/{branch}')
                         break
+                else:
+                    raise Exception("No remote branches found")
+
+            # Reset to remote branch
+            repo.git.reset('--hard', f'origin/{branch}')
+
+        except git.exc.InvalidGitRepositoryError:
+            # Initialize new repository
+            logger.info("Initializing new repository")
+            repo = git.Repo.init(REPO_PATH)
+            origin = repo.create_remote('origin', REMOTE_URL)
+
+            # First fetch
+            origin.fetch()
+
+            # Determine available branch
+            branch = 'master'  # Default
+            for ref in origin.refs:
+                if ref.name.startswith('origin/'):
+                    branch = ref.name.split('/')[-1]
+                    break
+
+            # Checkout branch
+            repo.create_head(branch, origin.refs[branch])
+            repo.heads[branch].set_tracking_branch(origin.refs[branch])
+            repo.heads[branch].checkout()
+            repo.git.reset('--hard', f'origin/{branch}')
 
         # Configure git user
         with repo.config_writer() as git_config:
@@ -140,6 +139,11 @@ def check_updates(repo):
 
         # Fetch updates
         repo.remotes.origin.fetch()
+
+        # Verify branch exists
+        if f'origin/{branch}' not in repo.references:
+            raise Exception(f"Remote branch origin/{branch} not found")
+
         remote_commit = repo.remotes.origin.refs[branch].commit
 
         logger.info(f"Local: {current_commit.hexsha[:7]}, Remote: {remote_commit.hexsha[:7]}")
@@ -153,7 +157,8 @@ def check_updates(repo):
         logger.info(f"Updating to {remote_commit.hexsha[:7]}")
 
         # Backup local changes
-        backup_local_files()
+        if not backup_local_files():
+            logger.warning("Failed to backup files, continuing with update")
 
         # Reset to remote
         repo.git.reset('--hard', f'origin/{branch}')
