@@ -24,25 +24,57 @@ CHECK_INTERVAL = 300  # Check every 5 minutes
 
 async def check_and_notify():
     """Check for updates and notify users if available."""
-    bot = Bot(token=BOT_TOKEN)
-    repo = git.Repo('/opt/gfp-pckmgr')
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN not found in environment variables")
+        return
+    
+    if not ALLOWED_USERS:
+        logger.error("No ALLOWED_USERS specified in environment variables")
+        return
+    
+    try:
+        bot = Bot(token=BOT_TOKEN)
+        logger.info("Bot initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize bot: {str(e)}")
+        return
+    
+    try:
+        repo = git.Repo('/opt/gfp-pckmgr')
+        logger.info("Git repository initialized successfully")
+    except git.exc.InvalidGitRepositoryError:
+        logger.error("Not a valid git repository. Please run 'git init' in /opt/gfp-pckmgr")
+        return
+    except Exception as e:
+        logger.error(f"Failed to initialize git repository: {str(e)}")
+        return
+    
     last_commit = None
     
     while True:
         try:
             # Fetch latest changes
-            repo.remotes.origin.fetch()
+            try:
+                repo.remotes.origin.fetch()
+                logger.debug("Successfully fetched from remote")
+            except git.exc.GitCommandError as e:
+                logger.warning(f"Failed to fetch from remote: {str(e)}")
+                # Continue with local repository if fetch fails
+                pass
             
             # Get current commit
             current_commit = repo.head.commit.hexsha
+            logger.debug(f"Current commit: {current_commit[:7]}")
             
             # If this is the first run, just store the commit
             if last_commit is None:
                 last_commit = current_commit
+                logger.info(f"Initial commit set to: {last_commit[:7]}")
                 continue
             
             # Check if there are new commits
             if current_commit != last_commit:
+                logger.info(f"New commit detected: {current_commit[:7]}")
                 # Get commit information
                 new_commit = repo.head.commit
                 commit_message = new_commit.message.split('\n')[0]
@@ -73,17 +105,25 @@ async def check_and_notify():
                             reply_markup=reply_markup,
                             parse_mode='Markdown'
                         )
+                        logger.info(f"Update notification sent to user {user_id}")
                     except Exception as e:
                         logger.error(f"Error sending update notification to user {user_id}: {str(e)}")
                 
                 # Update last commit
                 last_commit = current_commit
+                logger.info(f"Last commit updated to: {last_commit[:7]}")
             
         except Exception as e:
-            logger.error(f"Error checking for updates: {str(e)}")
+            logger.error(f"Error in update check loop: {str(e)}")
         
         # Wait before next check
         await asyncio.sleep(CHECK_INTERVAL)
 
 if __name__ == '__main__':
-    asyncio.run(check_and_notify()) 
+    try:
+        asyncio.run(check_and_notify())
+    except KeyboardInterrupt:
+        logger.info("Update checker stopped by user")
+    except Exception as e:
+        logger.error(f"Fatal error in update checker: {str(e)}")
+        raise 

@@ -13,7 +13,6 @@ fi
 INSTALL_DIR="/opt/gfp-pckmgr"
 mkdir -p $INSTALL_DIR
 
-
 # Install Python dependencies
 pip3 install -r requirements.txt
 pip3 install gitpython
@@ -32,6 +31,16 @@ cp gfp_pckmgr.py $INSTALL_DIR/
 cp check_updates.py $INSTALL_DIR/
 cp .env $INSTALL_DIR/
 cp requirements.txt $INSTALL_DIR/
+
+# Initialize git repository if it doesn't exist
+if [ ! -d "$INSTALL_DIR/.git" ]; then
+    echo "Initializing git repository..."
+    cd $INSTALL_DIR
+    git init
+    git add .
+    git commit -m "Initial commit"
+    cd -
+fi
 
 # Copy service files
 cp gfp-pckmgr.service /etc/systemd/system/
