@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import time
 import git
+import hashlib
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 from dotenv import load_dotenv
@@ -37,6 +38,7 @@ HELP_MESSAGE = """
 /dir - Navigate directories with buttons
 /load_journal <service_name> <lines_num> - Get service logs
 /update - Check for updates and restart bot
+/version - Show current and available versions
 
 *Command Mode:*
 /cmd_mode - Enter command mode
@@ -478,6 +480,78 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception as e:
             await query.edit_message_text(f"❌ Error during update: {str(e)}")
 
+async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show current and available versions with MD5 hashes."""
+    if update.effective_user.id not in ALLOWED_USERS:
+        await update.message.reply_text("You are not authorized to use this bot.")
+        return
+    
+    try:
+        # Get local repository
+        repo = git.Repo('/opt/gfp-pckmgr')
+        
+        # Get current version info
+        current_commit = repo.head.commit
+        current_hash = hashlib.md5(str(current_commit).encode()).hexdigest()
+        
+        # Get file hashes
+        file_hashes = {}
+        for file in ['gfp_pckmgr.py', 'check_updates.py']:
+            file_path = os.path.join('/opt/gfp-pckmgr', file)
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    file_hashes[file] = hashlib.md5(f.read()).hexdigest()
+        
+        # Get remote repository info
+        repo.remotes.origin.fetch()
+        remote_commit = repo.remotes.origin.refs.master.commit
+        remote_hash = hashlib.md5(str(remote_commit).encode()).hexdigest()
+        
+        # Format version information
+        current_version = (
+            "📦 *Current Version*\n\n"
+            f"*Commit:* {current_commit.hexsha[:7]}\n"
+            f"*Message:* {current_commit.message.split('\n')[0]}\n"
+            f"*Author:* {current_commit.author.name}\n"
+            f"*Date:* {current_commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"*Commit Hash (MD5):* `{current_hash}`\n\n"
+            "*File Hashes:*\n"
+        )
+        
+        for file, hash_value in file_hashes.items():
+            current_version += f"`{file}: {hash_value}`\n"
+        
+        # Check if update is available
+        if current_commit.hexsha != remote_commit.hexsha:
+            available_version = (
+                "\n🆕 *Available Update*\n\n"
+                f"*Commit:* {remote_commit.hexsha[:7]}\n"
+                f"*Message:* {remote_commit.message.split('\n')[0]}\n"
+                f"*Author:* {remote_commit.author.name}\n"
+                f"*Date:* {remote_commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"*Commit Hash (MD5):* `{remote_hash}`\n\n"
+                "Use /update to install the update"
+            )
+        else:
+            available_version = "\n✅ You are running the latest version!"
+        
+        # Create keyboard with update button if update is available
+        keyboard = []
+        if current_commit.hexsha != remote_commit.hexsha:
+            keyboard.append([InlineKeyboardButton("🔄 Update Now", callback_data="update_confirm")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+        
+        # Send version information
+        await update.message.reply_text(
+            current_version + available_version,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error getting version information: {str(e)}")
+
 def main():
     """Start the bot."""
     if not BOT_TOKEN:
@@ -500,6 +574,7 @@ def main():
     application.add_handler(CommandHandler("load_journal", load_journal))
     application.add_handler(CommandHandler("dir", dir_command))
     application.add_handler(CommandHandler("update", check_updates))
+    application.add_handler(CommandHandler("version", version_command))
     
     # Add callback query handlers
     application.add_handler(CallbackQueryHandler(dir_button, pattern="^dir_|stop_dir$"))
