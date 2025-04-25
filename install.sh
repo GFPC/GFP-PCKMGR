@@ -9,56 +9,57 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Create installation directory
-INSTALL_DIR="/opt/gfp-pckmgr"
-mkdir -p $INSTALL_DIR
+# Get the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Install Python dependencies
-pip3 install -r requirements.txt
-pip3 install gitpython
+# Check if we're already in the target directory
+if [ "$SCRIPT_DIR" = "/opt/gfp-pckmgr" ]; then
+    echo "Already in target directory, skipping file copy"
+else
+    # Create directory if it doesn't exist
+    mkdir -p /opt/gfp-pckmgr
 
-# Create .env file if it doesn't exist
-if [ ! -f .env ]; then
-    echo "Creating .env file from template..."
-    cp env.example .env
-    echo "Please edit .env file and add your bot token and allowed users"
-    echo "Then run the installation script again"
-    exit 1
+    # Copy files
+    cp -f "$SCRIPT_DIR/gfp_pckmgr.py" /opt/gfp-pckmgr/
+    cp -f "$SCRIPT_DIR/check_updates.py" /opt/gfp-pckmgr/
+    cp -f "$SCRIPT_DIR/requirements.txt" /opt/gfp-pckmgr/
+    cp -f "$SCRIPT_DIR/gfp-pckmgr.service" /etc/systemd/system/
+    cp -f "$SCRIPT_DIR/gfp-pckmgr-updater.service" /etc/systemd/system/
 fi
 
-# Copy files to installation directory
-cp gfp_pckmgr.py $INSTALL_DIR/
-cp check_updates.py $INSTALL_DIR/
-cp .env $INSTALL_DIR/
-cp requirements.txt $INSTALL_DIR/
+# Check if .env exists, if not create it from template
+if [ ! -f /opt/gfp-pckmgr/.env ]; then
+    if [ -f "$SCRIPT_DIR/env.example" ]; then
+        cp "$SCRIPT_DIR/env.example" /opt/gfp-pckmgr/.env
+        echo "Created .env from template. Please edit /opt/gfp-pckmgr/.env to add your bot token and allowed users."
+        echo "After editing, run this script again."
+        exit 0
+    else
+        echo "Error: .env file does not exist and env.example template not found."
+        exit 1
+    fi
+fi
+
+# Set permissions
+chmod 755 /opt/gfp-pckmgr/gfp_pckmgr.py
+chmod 755 /opt/gfp-pckmgr/check_updates.py
+chmod 644 /etc/systemd/system/gfp-pckmgr.service
+chmod 644 /etc/systemd/system/gfp-pckmgr-updater.service
+chmod 600 /opt/gfp-pckmgr/.env
+
+# Install dependencies
+pip3 install -r /opt/gfp-pckmgr/requirements.txt
+pip3 install gitpython
 
 # Initialize git repository if it doesn't exist
-if [ ! -d "$INSTALL_DIR/.git" ]; then
+if [ ! -d "/opt/gfp-pckmgr/.git" ]; then
     echo "Initializing git repository..."
-    cd $INSTALL_DIR
+    cd /opt/gfp-pckmgr
     git init
     git add .
     git commit -m "Initial commit"
     cd -
 fi
-
-# Copy service files
-cp gfp-pckmgr.service /etc/systemd/system/
-cp gfp-pckmgr-updater.service /etc/systemd/system/
-
-# Set correct permissions
-echo "Setting file permissions..."
-# Python scripts
-chmod 755 $INSTALL_DIR/gfp_pckmgr.py
-chmod 755 $INSTALL_DIR/check_updates.py
-# Service files
-chmod 644 /etc/systemd/system/gfp-pckmgr.service
-chmod 644 /etc/systemd/system/gfp-pckmgr-updater.service
-# Configuration files
-chmod 600 $INSTALL_DIR/.env
-# Git repository
-chmod -R 755 $INSTALL_DIR/.git
-find $INSTALL_DIR/.git -type f -exec chmod 644 {} \;
 
 # Reload systemd
 systemctl daemon-reload

@@ -13,17 +13,30 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('/var/log/gfp-pckmgr.log')
+    ]
 )
 logger = logging.getLogger(__name__)
 
 # Get configuration from environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ALLOWED_USERS = [int(user_id) for user_id in os.getenv('ALLOWED_USERS', '').split(',') if user_id]
+
+if not BOT_TOKEN:
+    logger.error("BOT_TOKEN not found in environment variables")
+    raise ValueError("BOT_TOKEN not found in environment variables")
+
+if not ALLOWED_USERS:
+    logger.error("No ALLOWED_USERS specified in environment variables")
+    raise ValueError("No ALLOWED_USERS specified in environment variables")
+
+logger.info("Bot configuration loaded successfully")
 
 # Dictionary to store command mode status for each user
 command_mode_users = set()

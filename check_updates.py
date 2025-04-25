@@ -236,8 +236,31 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
             # Get repository
             repo = git.Repo('/opt/gfp-pckmgr')
             
+            # Check for local changes
+            if repo.is_dirty():
+                logger.warning("Local changes detected, attempting to stash...")
+                try:
+                    repo.git.stash()
+                    logger.info("Local changes stashed successfully")
+                except Exception as e:
+                    logger.error(f"Failed to stash local changes: {str(e)}")
+                    await query.edit_message_text(
+                        "❌ Failed to update: Local changes detected and could not be stashed.\n"
+                        "Please resolve local changes manually."
+                    )
+                    return
+            
             # Pull latest changes
-            repo.remotes.origin.pull()
+            try:
+                repo.remotes.origin.pull()
+                logger.info("Successfully pulled latest changes")
+            except git.exc.GitCommandError as e:
+                logger.error(f"Failed to pull changes: {str(e)}")
+                await query.edit_message_text(
+                    "❌ Failed to update: Could not pull changes.\n"
+                    "Please check the repository status manually."
+                )
+                return
             
             # Set correct permissions
             set_file_permissions()
@@ -258,6 +281,7 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             
         except Exception as e:
+            logger.error(f"Error during update: {str(e)}")
             await query.edit_message_text(f"❌ Error during update: {str(e)}")
 
 if __name__ == '__main__':

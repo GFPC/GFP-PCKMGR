@@ -5,14 +5,15 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/
+WorkingDirectory=/opt/gfp-pckmgr
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="PYTHONPATH=/opt/gfp-pckmgr"
-ExecStart=/usr/bin/python3 /opt/gfp-pckmgr/gfp_pckmgr.py
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/usr/bin/python3 -u /opt/gfp-pckmgr/gfp_pckmgr.py
 Restart=always
 RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
+StandardOutput=journal
+StandardError=journal
 SyslogIdentifier=gfp-pckmgr
 
 [Install]
