@@ -50,22 +50,33 @@ def set_file_permissions():
 def setup_git_repo():
     """Setup git repository with proper remote configuration."""
     try:
-        repo = git.Repo('/opt/gfp-pckmgr')
-        logger.info("Git repository initialized")
+        repo_path = '/opt/gfp-pckmgr'
         
-        # Check if remote exists
-        if not repo.remotes:
-            logger.info("No remote found, adding origin...")
-            repo.create_remote('origin', 'https://github.com/GFPC/GFP-PCKMGR.git')
+        # Initialize repository if it doesn't exist
+        if not os.path.exists(os.path.join(repo_path, '.git')):
+            logger.info("Initializing new Git repository")
+            repo = git.Repo.init(repo_path)
+            origin = repo.create_remote('origin', 'https://github.com/GFPC/GFP-PCKMGR.git')
+            origin.fetch()
+            repo.create_head('main', origin.refs.main)
+            repo.heads.main.set_tracking_branch(origin.refs.main)
+            repo.heads.main.checkout()
+        else:
+            repo = git.Repo(repo_path)
+            logger.info("Using existing Git repository")
+        
+        # Force reset to remote state
+        logger.info("Resetting repository to remote state")
+        repo.git.fetch('--all')
+        repo.git.reset('--hard', 'origin/main')
         
         # Configure git
         with repo.config_writer() as git_config:
             git_config.set_value('user', 'name', 'GFP Package Manager')
             git_config.set_value('user', 'email', 'bot@gfp-pckmgr')
         
-        # Verify remote configuration
-        repo.remotes.origin.fetch()
-        logger.info("Successfully verified remote configuration")
+        logger.info(f"Current commit: {repo.head.commit.hexsha[:7]}")
+        logger.info(f"Remote commit: {repo.remotes.origin.refs.main.commit.hexsha[:7]}")
         
         return repo
         
@@ -99,12 +110,17 @@ def check_updates(repo):
     global LAST_CHECKED_COMMIT
     
     try:
-        # Fetch latest changes
-        repo.remotes.origin.fetch()
+        # Force fetch and reset to ensure we're in sync
+        logger.info("Forcing repository sync")
+        repo.git.fetch('--all')
+        repo.git.reset('--hard', 'origin/main')
         
         # Get current and remote commit info
         current_commit = repo.head.commit
         remote_commit = repo.remotes.origin.refs.main.commit
+        
+        logger.info(f"Local commit: {current_commit.hexsha[:7]}")
+        logger.info(f"Remote commit: {remote_commit.hexsha[:7]}")
         
         # If this is the first run, just store the commit
         if LAST_CHECKED_COMMIT is None:
