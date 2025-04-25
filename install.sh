@@ -13,6 +13,7 @@ fi
 INSTALL_DIR="/opt/gfp-pckmgr"
 mkdir -p $INSTALL_DIR
 
+
 # Install Python dependencies
 pip3 install -r requirements.txt
 pip3 install gitpython

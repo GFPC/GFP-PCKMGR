@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
