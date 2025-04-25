@@ -4,6 +4,7 @@ import logging
 import subprocess
 import tempfile
 import time
+import git
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 from dotenv import load_dotenv
@@ -34,6 +35,7 @@ HELP_MESSAGE = """
 /exec <command> - Execute a single command
 /dir - Navigate directories with buttons
 /load_journal <service_name> <lines_num> - Get service logs
+/update - Check for updates and restart bot
 
 *Command Mode:*
 /cmd_mode - Enter command mode
@@ -394,6 +396,87 @@ async def dir_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+async def check_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check for updates and notify users if available."""
+    try:
+        # Get repository information
+        repo = git.Repo('/opt/gfp-pckmgr')
+        current_commit = repo.head.commit.hexsha
+        repo.remotes.origin.fetch()
+        
+        # Check if there are new commits
+        if repo.head.commit.hexsha != current_commit:
+            # Create keyboard with update buttons
+            keyboard = [
+                [InlineKeyboardButton("🔄 Update Now", callback_data="update_confirm")],
+                [InlineKeyboardButton("❌ Cancel Update", callback_data="update_cancel")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Get commit information
+            new_commit = repo.head.commit
+            commit_message = new_commit.message.split('\n')[0]
+            commit_author = new_commit.author.name
+            commit_date = new_commit.committed_datetime.strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Send update notification
+            message = (
+                "🔄 *New Update Available!*\n\n"
+                f"*Commit:* {commit_message}\n"
+                f"*Author:* {commit_author}\n"
+                f"*Date:* {commit_date}\n\n"
+                "Would you like to update now?"
+            )
+            
+            # Store current commit in context
+            context.bot_data['pending_update'] = {
+                'old_commit': current_commit,
+                'new_commit': new_commit.hexsha
+            }
+            
+            await update.message.reply_text(
+                message,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text("✅ Bot is up to date!")
+            
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error checking for updates: {str(e)}")
+
+async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle update confirmation button presses."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "update_cancel":
+        await query.edit_message_text("Update cancelled.")
+        return
+    
+    if query.data == "update_confirm":
+        try:
+            # Get repository
+            repo = git.Repo('/opt/gfp-pckmgr')
+            
+            # Pull latest changes
+            repo.remotes.origin.pull()
+            
+            # Install new dependencies if requirements.txt changed
+            if 'requirements.txt' in [item.a_path for item in repo.index.diff('HEAD~1')]:
+                subprocess.run(['pip3', 'install', '-r', 'requirements.txt'], check=True)
+            
+            # Restart the service
+            subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
+            
+            await query.edit_message_text(
+                "✅ Update completed successfully!\n"
+                "The bot will restart momentarily."
+            )
+            
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error during update: {str(e)}")
+
 def main():
     """Start the bot."""
     if not BOT_TOKEN:
@@ -415,9 +498,11 @@ def main():
     application.add_handler(CommandHandler("exit", exit_command))
     application.add_handler(CommandHandler("load_journal", load_journal))
     application.add_handler(CommandHandler("dir", dir_command))
+    application.add_handler(CommandHandler("update", check_updates))
     
-    # Add callback query handler for directory navigation
+    # Add callback query handlers
     application.add_handler(CallbackQueryHandler(dir_button, pattern="^dir_|stop_dir$"))
+    application.add_handler(CallbackQueryHandler(handle_update_button, pattern="^update_"))
     
     # Add message handler for command mode
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

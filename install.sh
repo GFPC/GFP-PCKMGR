@@ -15,6 +15,7 @@ mkdir -p $INSTALL_DIR
 
 # Install Python dependencies
 pip3 install -r requirements.txt
+pip3 install gitpython
 
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
@@ -27,44 +28,71 @@ fi
 
 # Copy files to installation directory
 cp gfp_pckmgr.py $INSTALL_DIR/
+cp check_updates.py $INSTALL_DIR/
 cp .env $INSTALL_DIR/
 cp requirements.txt $INSTALL_DIR/
 
-# Copy service file
+# Copy service files
 cp gfp-pckmgr.service /etc/systemd/system/
+cp gfp-pckmgr-updater.service /etc/systemd/system/
 
 # Set permissions
 chmod 755 $INSTALL_DIR/gfp_pckmgr.py
+chmod 755 $INSTALL_DIR/check_updates.py
 chmod 644 /etc/systemd/system/gfp-pckmgr.service
+chmod 644 /etc/systemd/system/gfp-pckmgr-updater.service
 chmod 600 $INSTALL_DIR/.env
 
 # Reload systemd
 systemctl daemon-reload
 
-# Stop service if it's running
+# Stop services if they're running
 if systemctl is-active --quiet gfp-pckmgr; then
-    echo "Stopping existing service..."
+    echo "Stopping existing bot service..."
     systemctl stop gfp-pckmgr
 fi
 
-# Enable and start service
+if systemctl is-active --quiet gfp-pckmgr-updater; then
+    echo "Stopping existing updater service..."
+    systemctl stop gfp-pckmgr-updater
+fi
+
+# Enable and start services
 systemctl enable gfp-pckmgr
+systemctl enable gfp-pckmgr-updater
 systemctl start gfp-pckmgr
+systemctl start gfp-pckmgr-updater
 
 # Check service status
-echo "Checking service status..."
-sleep 2  # Give the service some time to start
+echo "Checking services status..."
+sleep 2  # Give the services some time to start
+
+echo "Bot service status:"
 systemctl status gfp-pckmgr
 
-# Show logs if service failed
+echo "Updater service status:"
+systemctl status gfp-pckmgr-updater
+
+# Show logs if services failed
 if ! systemctl is-active --quiet gfp-pckmgr; then
-    echo "Service failed to start. Showing logs:"
+    echo "Bot service failed to start. Showing logs:"
     journalctl -u gfp-pckmgr -n 50 --no-pager
     echo "Please check the logs above for errors"
     exit 1
 fi
 
+if ! systemctl is-active --quiet gfp-pckmgr-updater; then
+    echo "Updater service failed to start. Showing logs:"
+    journalctl -u gfp-pckmgr-updater -n 50 --no-pager
+    echo "Please check the logs above for errors"
+    exit 1
+fi
+
 echo "Installation completed successfully!"
-echo "The bot is now running as a systemd service."
-echo "You can check its status with: systemctl status gfp-pckmgr"
-echo "You can view logs with: journalctl -u gfp-pckmgr -f" 
+echo "The bot and updater are now running as systemd services."
+echo "You can check their status with:"
+echo "  systemctl status gfp-pckmgr"
+echo "  systemctl status gfp-pckmgr-updater"
+echo "You can view logs with:"
+echo "  journalctl -u gfp-pckmgr -f"
+echo "  journalctl -u gfp-pckmgr-updater -f" 
