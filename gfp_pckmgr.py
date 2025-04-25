@@ -32,6 +32,7 @@ HELP_MESSAGE = """
 /start - Start the bot and show welcome message
 /help - Show this help message
 /exec <command> - Execute a single command
+/dir - Navigate directories with buttons
 /load_journal <service_name> <lines_num> - Get service logs
 
 *Command Mode:*
@@ -43,6 +44,9 @@ Type 'exit' or use /exit to leave command mode.
 *Examples:*
 • Single command:
   `/exec ls -la`
+  
+• Directory navigation:
+  `/dir` - Navigate through directories with buttons
   
 • Command mode:
   ```
@@ -229,15 +233,12 @@ async def _execute_and_reply(update: Update, command: str):
     """Execute a command and send the response."""
     start_time = time.time()
     try:
-        # Get current directory
-        pwd_result = subprocess.run(
-            "pwd",
-            shell=True,
-            capture_output=True,
-            text=True
-        )
-        current_dir = pwd_result.stdout.strip()
-
+        # Get current directory from context or use root
+        current_dir = update.effective_user.id in update._user_data and update._user_data[update.effective_user.id].get('current_dir', '/')
+        
+        # Change to the selected directory before executing command
+        os.chdir(current_dir)
+        
         # Execute the command
         result = subprocess.run(
             command,
@@ -283,14 +284,8 @@ async def dir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("You are not authorized to use this bot.")
         return
     
-    # Get current directory
-    pwd_result = subprocess.run(
-        "pwd",
-        shell=True,
-        capture_output=True,
-        text=True
-    )
-    current_dir = pwd_result.stdout.strip()
+    # Get current directory from context or use root
+    current_dir = context.user_data.get('current_dir', '/')
     
     # Get directory contents
     ls_result = subprocess.run(
@@ -349,6 +344,9 @@ async def dir_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Extract directory path from callback data
     target_dir = query.data.replace("dir_", "")
+    
+    # Save selected directory in user context
+    context.user_data['current_dir'] = target_dir
     
     # Get directory contents
     ls_result = subprocess.run(
