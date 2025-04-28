@@ -204,10 +204,15 @@ def check_updates(repo):
         }
         
         update_file = os.path.join(REPO_PATH, '.update_available')
-        with open(update_file, 'w') as f:
-            f.write(str(update_info))
+        logger.info(f"Creating update notification file at {update_file}")
+        logger.info(f"Update info: {update_info}")
         
-        logger.info("Update notification created")
+        try:
+            with open(update_file, 'w') as f:
+                f.write(str(update_info))
+            logger.info("Update notification file created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create update notification file: {str(e)}")
 
         # Backup local changes
         if not backup_local_files():

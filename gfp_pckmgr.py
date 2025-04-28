@@ -599,43 +599,60 @@ async def check_pending_updates(context: ContextTypes.DEFAULT_TYPE):
     """Check for pending updates and notify users."""
     try:
         update_file = os.path.join('/opt/gfp-pckmgr', '.update_available')
+        logger.info(f"Checking for update notification file at {update_file}")
+        
         if os.path.exists(update_file):
-            with open(update_file, 'r') as f:
-                update_info = eval(f.read())  # Be careful with eval in production!
-            
-            # Create keyboard with update buttons
-            keyboard = [
-                [InlineKeyboardButton("🔄 Update Now", callback_data="update_confirm")],
-                [InlineKeyboardButton("❌ Cancel Update", callback_data="update_cancel")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            # Send update notification
-            message = (
-                "🔄 *New Update Available!*\n\n"
-                f"*Commit:* {update_info['message']}\n"
-                f"*Author:* {update_info['author']}\n"
-                f"*Date:* {update_info['date']}\n\n"
-                "Would you like to update now?"
-            )
-            
-            # Store update info in context
-            context.bot_data['pending_update'] = update_info
-            
-            # Send notification to all allowed users
-            for user_id in ALLOWED_USERS:
+            logger.info("Update notification file found")
+            try:
+                with open(update_file, 'r') as f:
+                    content = f.read()
+                    logger.info(f"Update file content: {content}")
+                    update_info = eval(content)  # Be careful with eval in production!
+                
+                # Create keyboard with update buttons
+                keyboard = [
+                    [InlineKeyboardButton("🔄 Update Now", callback_data="update_confirm")],
+                    [InlineKeyboardButton("❌ Cancel Update", callback_data="update_cancel")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                # Send update notification
+                message = (
+                    "🔄 *New Update Available!*\n\n"
+                    f"*Commit:* {update_info['message']}\n"
+                    f"*Author:* {update_info['author']}\n"
+                    f"*Date:* {update_info['date']}\n\n"
+                    "Would you like to update now?"
+                )
+                
+                # Store update info in context
+                context.bot_data['pending_update'] = update_info
+                
+                # Send notification to all allowed users
+                for user_id in ALLOWED_USERS:
+                    try:
+                        logger.info(f"Sending update notification to user {user_id}")
+                        await context.bot.send_message(
+                            chat_id=user_id,
+                            text=message,
+                            reply_markup=reply_markup,
+                            parse_mode='Markdown'
+                        )
+                        logger.info(f"Update notification sent to user {user_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to send update notification to user {user_id}: {str(e)}")
+                
+                # Remove update file
                 try:
-                    await context.bot.send_message(
-                        chat_id=user_id,
-                        text=message,
-                        reply_markup=reply_markup,
-                        parse_mode='Markdown'
-                    )
+                    os.remove(update_file)
+                    logger.info("Update notification file removed")
                 except Exception as e:
-                    logger.error(f"Failed to send update notification to user {user_id}: {str(e)}")
-            
-            # Remove update file
-            os.remove(update_file)
+                    logger.error(f"Failed to remove update notification file: {str(e)}")
+                
+            except Exception as e:
+                logger.error(f"Error processing update notification file: {str(e)}")
+        else:
+            logger.info("No update notification file found")
             
     except Exception as e:
         logger.error(f"Error checking pending updates: {str(e)}")
@@ -677,6 +694,7 @@ def main():
     # Add job queue for checking updates
     job_queue = application.job_queue
     if job_queue:
+        logger.info("JobQueue initialized, starting update checks")
         job_queue.run_repeating(check_pending_updates, interval=30, first=10)
     else:
         logger.warning("JobQueue not available. Update notifications will not be sent automatically.")
