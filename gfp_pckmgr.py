@@ -675,7 +675,11 @@ def main():
     application.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 
     # Add job queue for checking updates
-    application.job_queue.run_repeating(check_pending_updates, interval=30, first=10)
+    job_queue = application.job_queue
+    if job_queue:
+        job_queue.run_repeating(check_pending_updates, interval=30, first=10)
+    else:
+        logger.warning("JobQueue not available. Update notifications will not be sent automatically.")
 
     # Start the Bot
     application.run_polling()
