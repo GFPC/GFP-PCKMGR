@@ -595,6 +595,51 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error getting version information: {str(e)}")
 
+async def check_pending_updates(context: ContextTypes.DEFAULT_TYPE):
+    """Check for pending updates and notify users."""
+    try:
+        update_file = os.path.join('/opt/gfp-pckmgr', '.update_available')
+        if os.path.exists(update_file):
+            with open(update_file, 'r') as f:
+                update_info = eval(f.read())  # Be careful with eval in production!
+            
+            # Create keyboard with update buttons
+            keyboard = [
+                [InlineKeyboardButton("🔄 Update Now", callback_data="update_confirm")],
+                [InlineKeyboardButton("❌ Cancel Update", callback_data="update_cancel")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Send update notification
+            message = (
+                "🔄 *New Update Available!*\n\n"
+                f"*Commit:* {update_info['message']}\n"
+                f"*Author:* {update_info['author']}\n"
+                f"*Date:* {update_info['date']}\n\n"
+                "Would you like to update now?"
+            )
+            
+            # Store update info in context
+            context.bot_data['pending_update'] = update_info
+            
+            # Send notification to all allowed users
+            for user_id in ALLOWED_USERS:
+                try:
+                    await context.bot.send_message(
+                        chat_id=user_id,
+                        text=message,
+                        reply_markup=reply_markup,
+                        parse_mode='Markdown'
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send update notification to user {user_id}: {str(e)}")
+            
+            # Remove update file
+            os.remove(update_file)
+            
+    except Exception as e:
+        logger.error(f"Error checking pending updates: {str(e)}")
+
 def main():
     """Start the bot."""
     if not BOT_TOKEN:
@@ -628,6 +673,9 @@ def main():
     
     # Add handler for unknown commands
     application.add_handler(MessageHandler(filters.COMMAND, unknown_command))
+
+    # Add job queue for checking updates
+    application.job_queue.run_repeating(check_pending_updates, interval=30, first=10)
 
     # Start the Bot
     application.run_polling()

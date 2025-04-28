@@ -193,6 +193,22 @@ def check_updates(repo):
         commit_message = remote_commit.message.splitlines()[0]
         logger.info(f"Commit message: {commit_message}")
 
+        # Create update notification file
+        update_info = {
+            'old_commit': current_commit.hexsha,
+            'new_commit': remote_commit.hexsha,
+            'branch': branch,
+            'message': commit_message,
+            'author': remote_commit.author.name,
+            'date': remote_commit.committed_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        update_file = os.path.join(REPO_PATH, '.update_available')
+        with open(update_file, 'w') as f:
+            f.write(str(update_info))
+        
+        logger.info("Update notification created")
+
         # Backup local changes
         if not backup_local_files():
             logger.warning("Failed to backup files, continuing with update")
