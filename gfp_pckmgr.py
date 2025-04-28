@@ -6,6 +6,7 @@ import tempfile
 import time
 import git
 import hashlib
+import shutil
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 from dotenv import load_dotenv
@@ -417,7 +418,7 @@ async def check_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Get repository information
         repo = git.Repo('/opt/gfp-pckmgr')
-        current_commit = repo.head.commit.hexsha
+        current_commit = repo.head.commit
         
         # Determine active branch
         try:
@@ -484,6 +485,38 @@ async def check_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error checking for updates: {str(e)}")
 
+async def send_startup_notification(context: ContextTypes.DEFAULT_TYPE):
+    """Send startup notification to all allowed users."""
+    try:
+        # Get repository information
+        repo = git.Repo('/opt/gfp-pckmgr')
+        current_commit = repo.head.commit
+        
+        message = (
+            "🤖 *Bot Started*\n\n"
+            f"*Version:* {current_commit.hexsha[:7]}\n"
+            f"*Branch:* {repo.active_branch.name}\n"
+            f"*Last Commit:* {current_commit.message.splitlines()[0]}\n"
+            f"*Author:* {current_commit.author.name}\n"
+            f"*Date:* {current_commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        
+        # Send notification to all allowed users
+        for user_id in ALLOWED_USERS:
+            try:
+                logger.info(f"Sending startup notification to user {user_id}")
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=message,
+                    parse_mode='Markdown'
+                )
+                logger.info(f"Startup notification sent to user {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to send startup notification to user {user_id}: {str(e)}")
+                
+    except Exception as e:
+        logger.error(f"Error sending startup notification: {str(e)}")
+
 async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle update confirmation button presses."""
     query = update.callback_query
@@ -498,18 +531,33 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
             # Get repository
             repo = git.Repo('/opt/gfp-pckmgr')
             
-            # Get branch from context
-            branch = context.bot_data['pending_update']['branch']
+            # Get update info from context
+            update_info = context.bot_data['pending_update']
+            branch = update_info['branch']
             
-            # Pull latest changes
-            repo.remotes.origin.pull(branch)
+            # Backup local changes
+            backup_dir = os.path.join('/opt/gfp-pckmgr', 'backup')
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            for file in ['check_updates.py', 'gfp_pckmgr.py']:
+                src = os.path.join('/opt/gfp-pckmgr', file)
+                if os.path.exists(src):
+                    dst = os.path.join(backup_dir, f"{file}.bak.{int(time.time())}")
+                    shutil.copy2(src, dst)
+                    logger.info(f"Backed up {file} to {dst}")
+            
+            # Reset to remote branch
+            logger.info(f"Resetting to origin/{branch}")
+            repo.git.reset('--hard', f'origin/{branch}')
             
             # Install new dependencies if requirements.txt changed
             if 'requirements.txt' in [item.a_path for item in repo.index.diff('HEAD~1')]:
                 subprocess.run(['pip3', 'install', '-r', 'requirements.txt'], check=True)
             
-            # Restart the service
+            # Restart the services
+            logger.info("Restarting services")
             subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
+            subprocess.run(['systemctl', 'restart', 'gfp-pckmgr-updater'], check=True)
             
             await query.edit_message_text(
                 "✅ Update completed successfully!\n"
@@ -517,6 +565,7 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             
         except Exception as e:
+            logger.error(f"Error during update: {str(e)}")
             await query.edit_message_text(f"❌ Error during update: {str(e)}")
 
 async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -707,7 +756,9 @@ def main():
     if job_queue:
         logger.info("JobQueue initialized, starting update checks every 30 seconds")
         job_queue.run_repeating(check_pending_updates, interval=30, first=10)
-        logger.info("Update check job scheduled successfully")
+        # Schedule startup notification
+        job_queue.run_once(send_startup_notification, 5)  # Send after 5 seconds
+        logger.info("Update check job and startup notification scheduled successfully")
     else:
         logger.error("JobQueue not available. Update notifications will not be sent automatically.")
 

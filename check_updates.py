@@ -214,27 +214,10 @@ def check_updates(repo):
         except Exception as e:
             logger.error(f"Failed to create update notification file: {str(e)}")
 
-        # Backup local changes
-        if not backup_local_files():
-            logger.warning("Failed to backup files, continuing with update")
-
-        # Reset to remote
-        logger.info(f"Resetting to origin/{branch}")
-        repo.git.reset('--hard', f'origin/{branch}')
-
-        # Wait for bot to process the update notification
-        logger.info("Waiting for bot to process update notification...")
-        time.sleep(30)  # Wait 30 seconds before restarting services
-
-        # Restart services
-        logger.info("Restarting services")
-        subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
-        subprocess.run(['systemctl', 'restart', 'gfp-pckmgr-updater'], check=True)
-
         return True
 
     except Exception as e:
-        logger.error(f"Update failed: {str(e)}")
+        logger.error(f"Update check failed: {str(e)}")
         raise
 
 
