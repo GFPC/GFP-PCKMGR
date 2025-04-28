@@ -627,7 +627,10 @@ async def check_pending_updates(context: ContextTypes.DEFAULT_TYPE):
                     "🔄 *New Update Available!*\n\n"
                     f"*Commit:* {update_info['message']}\n"
                     f"*Author:* {update_info['author']}\n"
-                    f"*Date:* {update_info['date']}\n\n"
+                    f"*Date:* {update_info['date']}\n"
+                    f"*Branch:* {update_info['branch']}\n"
+                    f"*Old Commit:* {update_info['old_commit'][:7]}\n"
+                    f"*New Commit:* {update_info['new_commit'][:7]}\n\n"
                     "Would you like to update now?"
                 )
                 
@@ -673,6 +676,8 @@ def main():
         logger.error("No ALLOWED_USERS specified in environment variables")
         return
     
+    logger.info(f"Starting bot with {len(ALLOWED_USERS)} allowed users")
+    
     # Create the Application and pass it your bot's token
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -700,12 +705,14 @@ def main():
     # Add job queue for checking updates
     job_queue = application.job_queue
     if job_queue:
-        logger.info("JobQueue initialized, starting update checks")
+        logger.info("JobQueue initialized, starting update checks every 30 seconds")
         job_queue.run_repeating(check_pending_updates, interval=30, first=10)
+        logger.info("Update check job scheduled successfully")
     else:
-        logger.warning("JobQueue not available. Update notifications will not be sent automatically.")
+        logger.error("JobQueue not available. Update notifications will not be sent automatically.")
 
     # Start the Bot
+    logger.info("Starting bot polling...")
     application.run_polling()
 
 if __name__ == '__main__':
