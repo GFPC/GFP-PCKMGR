@@ -158,9 +158,12 @@ def check_updates(repo):
             branch = 'main'  # Default fallback
 
         current_commit = repo.head.commit
+        logger.info(f"Current local commit: {current_commit.hexsha[:7]}")
 
-        # Fetch updates
-        repo.remotes.origin.fetch()
+        # Force fetch updates with prune to ensure fresh data
+        logger.info("Fetching updates from remote...")
+        repo.remotes.origin.fetch(prune=True, force=True)
+        logger.info("Fetch completed")
 
         # Verify branch exists
         if f'origin/{branch}' not in repo.references:
@@ -178,8 +181,7 @@ def check_updates(repo):
 
         # Get remote commit
         remote_commit = repo.remotes.origin.refs[branch].commit
-
-        logger.info(f"Local: {current_commit.hexsha[:7]}, Remote: {remote_commit.hexsha[:7]}")
+        logger.info(f"Remote commit: {remote_commit.hexsha[:7]}")
 
         # Check if update needed
         if current_commit.hexsha == remote_commit.hexsha:
@@ -187,7 +189,8 @@ def check_updates(repo):
             return False
 
         # Apply updates
-        logger.info(f"Updating to {remote_commit.hexsha[:7]}")
+        logger.info(f"Update available! Local: {current_commit.hexsha[:7]}, Remote: {remote_commit.hexsha[:7]}")
+        logger.info(f"Commit message: {remote_commit.message.split('\n')[0]}")
 
         # Backup local changes
         if not backup_local_files():
@@ -222,7 +225,8 @@ def main():
             except Exception as e:
                 logger.error(f"Update cycle failed: {str(e)}")
 
-            time.sleep(CHECK_INTERVAL)
+            # Sleep for 1 minute instead of 5
+            time.sleep(60)
 
     except KeyboardInterrupt:
         logger.info("Service stopped by user")
