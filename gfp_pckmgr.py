@@ -528,13 +528,10 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Get local repository
         repo = git.Repo('/opt/gfp-pckmgr')
-        print(repo)
         
         # Get current version info
         current_commit = repo.head.commit
         current_hash = hashlib.md5(str(current_commit).encode()).hexdigest()
-
-        print(current_commit)
         
         # Get file hashes
         file_hashes = {}
@@ -546,7 +543,15 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Get remote repository info
         repo.remotes.origin.fetch()
-        remote_commit = repo.remotes.origin.refs.master.commit
+        
+        # Determine active branch
+        try:
+            branch = repo.active_branch.name
+        except:
+            branch = 'main'  # Default fallback
+        
+        # Get remote commit
+        remote_commit = repo.remotes.origin.refs[branch].commit
         remote_hash = hashlib.md5(str(remote_commit).encode()).hexdigest()
         delimiter = "\n"
         
@@ -593,6 +598,7 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
     except Exception as e:
+        logger.error(f"Error getting version information: {str(e)}")
         await update.message.reply_text(f"❌ Error getting version information: {str(e)}")
 
 async def check_pending_updates(context: ContextTypes.DEFAULT_TYPE):
