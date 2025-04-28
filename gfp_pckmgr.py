@@ -563,20 +563,32 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
                 "The bot will restart momentarily."
             )
             
-            # Stop and start services
+            # Stop services with timeout
             logger.info("Stopping services...")
             try:
-                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr'], check=True)
-                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr-updater'], check=True)
+                # Try graceful stop first
+                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr'], timeout=5, check=True)
+                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr-updater'], timeout=5, check=True)
+            except subprocess.TimeoutExpired:
+                logger.warning("Graceful stop timed out, forcing stop...")
+                # Force stop if timeout
+                subprocess.run(['systemctl', 'kill', '--signal=SIGKILL', 'gfp-pckmgr'], check=True)
+                subprocess.run(['systemctl', 'kill', '--signal=SIGKILL', 'gfp-pckmgr-updater'], check=True)
             except subprocess.CalledProcessError as e:
                 if e.returncode == -15:  # SIGTERM
                     logger.info("Services stopped successfully")
                 else:
                     raise
             
+            # Ensure services are stopped
+            subprocess.run(['systemctl', 'reset-failed', 'gfp-pckmgr'], check=False)
+            subprocess.run(['systemctl', 'reset-failed', 'gfp-pckmgr-updater'], check=False)
+            
             logger.info("Starting services...")
             try:
+                # Start services in correct order
                 subprocess.run(['systemctl', 'start', 'gfp-pckmgr-updater'], check=True)
+                time.sleep(1)  # Small delay to ensure updater is ready
                 subprocess.run(['systemctl', 'start', 'gfp-pckmgr'], check=True)
             except subprocess.CalledProcessError as e:
                 if e.returncode == -15:  # SIGTERM
