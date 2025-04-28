@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 REPO_PATH = '/opt/gfp-pckmgr'
 REMOTE_URL = 'https://github.com/GFPC/GFP-PCKMGR.git'
-CHECK_INTERVAL = 60  # 1 minute
+CHECK_INTERVAL = 10  # 10 seconds instead of 60
 
 
 def backup_local_files():
