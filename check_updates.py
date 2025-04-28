@@ -162,7 +162,17 @@ def check_updates(repo):
 
         # Verify branch exists
         if f'origin/{branch}' not in repo.references:
-            raise Exception(f"Remote branch origin/{branch} not found")
+            logger.warning(f"Branch origin/{branch} not found, searching for available branches")
+            available_branches = []
+            for ref in repo.references:
+                if ref.name.startswith('origin/'):
+                    available_branches.append(ref.name.split('/')[-1])
+            
+            if available_branches:
+                branch = available_branches[0]
+                logger.info(f"Found available branches: {available_branches}, using {branch}")
+            else:
+                raise Exception("No remote branches found")
 
         remote_commit = repo.remotes.origin.refs[branch].commit
 

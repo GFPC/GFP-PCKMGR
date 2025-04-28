@@ -418,10 +418,33 @@ async def check_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Get repository information
         repo = git.Repo('/opt/gfp-pckmgr')
         current_commit = repo.head.commit.hexsha
+        
+        # Determine active branch
+        try:
+            branch = repo.active_branch.name
+        except:
+            branch = 'main'  # Default fallback
+        
+        # Fetch updates
         repo.remotes.origin.fetch()
         
+        # Verify branch exists
+        if f'origin/{branch}' not in repo.references:
+            available_branches = []
+            for ref in repo.references:
+                if ref.name.startswith('origin/'):
+                    available_branches.append(ref.name.split('/')[-1])
+            
+            if available_branches:
+                branch = available_branches[0]
+            else:
+                raise Exception("No remote branches found")
+        
+        # Get remote commit
+        remote_commit = repo.remotes.origin.refs[branch].commit
+        
         # Check if there are new commits
-        if repo.head.commit.hexsha != current_commit:
+        if current_commit != remote_commit.hexsha:
             # Create keyboard with update buttons
             keyboard = [
                 [InlineKeyboardButton("🔄 Update Now", callback_data="update_confirm")],
@@ -430,10 +453,9 @@ async def check_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             # Get commit information
-            new_commit = repo.head.commit
-            commit_message = new_commit.message.split('\n')[0]
-            commit_author = new_commit.author.name
-            commit_date = new_commit.committed_datetime.strftime("%Y-%m-%d %H:%M:%S")
+            commit_message = remote_commit.message.split('\n')[0]
+            commit_author = remote_commit.author.name
+            commit_date = remote_commit.committed_datetime.strftime("%Y-%m-%d %H:%M:%S")
             
             # Send update notification
             message = (
@@ -447,7 +469,8 @@ async def check_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Store current commit in context
             context.bot_data['pending_update'] = {
                 'old_commit': current_commit,
-                'new_commit': new_commit.hexsha
+                'new_commit': remote_commit.hexsha,
+                'branch': branch
             }
             
             await update.message.reply_text(
@@ -475,8 +498,11 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
             # Get repository
             repo = git.Repo('/opt/gfp-pckmgr')
             
+            # Get branch from context
+            branch = context.bot_data['pending_update']['branch']
+            
             # Pull latest changes
-            repo.remotes.origin.pull()
+            repo.remotes.origin.pull(branch)
             
             # Install new dependencies if requirements.txt changed
             if 'requirements.txt' in [item.a_path for item in repo.index.diff('HEAD~1')]:
