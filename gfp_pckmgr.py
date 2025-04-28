@@ -554,15 +554,23 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
             if 'requirements.txt' in [item.a_path for item in repo.index.diff('HEAD~1')]:
                 subprocess.run(['pip3', 'install', '-r', 'requirements.txt'], check=True)
             
-            # Restart the services
-            logger.info("Restarting services")
-            subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
-            subprocess.run(['systemctl', 'restart', 'gfp-pckmgr-updater'], check=True)
-            
+            # Send success message before restart
             await query.edit_message_text(
                 "✅ Update completed successfully!\n"
                 "The bot will restart momentarily."
             )
+            
+            # Restart the services
+            logger.info("Restarting services")
+            try:
+                subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
+                subprocess.run(['systemctl', 'restart', 'gfp-pckmgr-updater'], check=True)
+            except subprocess.CalledProcessError as e:
+                # Ignore SIGTERM from systemctl restart
+                if e.returncode == -15:  # SIGTERM
+                    logger.info("Services restart initiated successfully")
+                else:
+                    raise
             
         except Exception as e:
             logger.error(f"Error during update: {str(e)}")
