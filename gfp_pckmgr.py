@@ -94,9 +94,12 @@ UNKNOWN_COMMAND_MESSAGE = """
 /start - Start the bot
 /help - Show help message
 /exec <command> - Execute a command
+/dir - Navigate directories
 /cmd_mode - Enter command mode
 /exit - Exit command mode
 /load_journal <service_name> <lines_num> - Get service logs
+/update - Check for updates
+/version - Show version info
 """
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):

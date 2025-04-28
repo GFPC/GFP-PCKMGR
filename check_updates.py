@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 # Configuration
 REPO_PATH = '/opt/gfp-pckmgr'
 REMOTE_URL = 'https://github.com/GFPC/GFP-PCKMGR.git'
-CHECK_INTERVAL = 10  # 10 seconds instead of 60
+CHECK_INTERVAL = 5  # 5 seconds between checks
+GIT_FETCH_INTERVAL = 30  # 30 seconds between git fetches
+last_fetch_time = 0
 
 
 def backup_local_files():
@@ -151,6 +153,9 @@ def setup_git_repo():
 def check_updates(repo):
     """Check for and apply updates."""
     try:
+        global last_fetch_time
+        current_time = time.time()
+        
         # Get current state
         try:
             branch = repo.active_branch.name
@@ -160,10 +165,14 @@ def check_updates(repo):
         current_commit = repo.head.commit
         logger.info(f"Current local commit: {current_commit.hexsha[:7]}")
 
-        # Force fetch updates with prune to ensure fresh data
-        logger.info("Fetching updates from remote...")
-        repo.remotes.origin.fetch(prune=True, force=True)
-        logger.info("Fetch completed")
+        # Only fetch from remote if enough time has passed
+        if current_time - last_fetch_time >= GIT_FETCH_INTERVAL:
+            logger.info("Fetching updates from remote...")
+            repo.remotes.origin.fetch(prune=True, force=True)
+            last_fetch_time = current_time
+            logger.info("Fetch completed")
+        else:
+            logger.debug("Skipping fetch, rate limit not reached")
 
         # Verify branch exists
         if f'origin/{branch}' not in repo.references:
@@ -185,7 +194,7 @@ def check_updates(repo):
 
         # Check if update needed
         if current_commit.hexsha == remote_commit.hexsha:
-            logger.info("No updates available")
+            logger.debug("No updates available")
             return False
 
         # Apply updates
@@ -234,8 +243,8 @@ def main():
             except Exception as e:
                 logger.error(f"Update cycle failed: {str(e)}")
 
-            # Sleep for 1 minute instead of 5
-            time.sleep(60)
+            # Sleep for CHECK_INTERVAL seconds
+            time.sleep(CHECK_INTERVAL)
 
     except KeyboardInterrupt:
         logger.info("Service stopped by user")
