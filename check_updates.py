@@ -85,7 +85,6 @@ def setup_git_repo():
             # Verify branch exists
             if f'origin/{branch}' not in repo.references:
                 logger.warning(f"Branch origin/{branch} not found, searching for available branches")
-                # Try to find any existing branch
                 available_branches = []
                 for ref in repo.references:
                     if ref.name.startswith('origin/'):
@@ -100,9 +99,11 @@ def setup_git_repo():
             # Reset to remote branch
             logger.info(f"Resetting to origin/{branch}")
             repo.git.reset('--hard', f'origin/{branch}')
-            # Ensure .env file is preserved
-            if os.path.exists(os.path.join(REPO_PATH, '.env')):
-                logger.info("Preserving .env file")
+
+            # Ensure we're on the correct branch
+            if branch != repo.active_branch.name:
+                logger.info(f"Switching to branch {branch}")
+                repo.git.checkout(branch)
 
         except git.exc.InvalidGitRepositoryError:
             # Initialize new repository
@@ -131,9 +132,6 @@ def setup_git_repo():
             repo.heads[branch].set_tracking_branch(origin.refs[branch])
             repo.heads[branch].checkout()
             repo.git.reset('--hard', f'origin/{branch}')
-            # Ensure .env file is preserved
-            if os.path.exists(os.path.join(REPO_PATH, '.env')):
-                logger.info("Preserving .env file")
 
         # Configure git user
         with repo.config_writer() as git_config:
@@ -154,7 +152,11 @@ def check_updates(repo):
     """Check for and apply updates."""
     try:
         # Get current state
-        branch = repo.active_branch.name
+        try:
+            branch = repo.active_branch.name
+        except:
+            branch = 'main'  # Default fallback
+
         current_commit = repo.head.commit
 
         # Fetch updates
@@ -174,6 +176,7 @@ def check_updates(repo):
             else:
                 raise Exception("No remote branches found")
 
+        # Get remote commit
         remote_commit = repo.remotes.origin.refs[branch].commit
 
         logger.info(f"Local: {current_commit.hexsha[:7]}, Remote: {remote_commit.hexsha[:7]}")
@@ -191,6 +194,7 @@ def check_updates(repo):
             logger.warning("Failed to backup files, continuing with update")
 
         # Reset to remote
+        logger.info(f"Resetting to origin/{branch}")
         repo.git.reset('--hard', f'origin/{branch}')
 
         # Restart services
