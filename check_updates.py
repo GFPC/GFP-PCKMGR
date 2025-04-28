@@ -77,20 +77,28 @@ def setup_git_repo():
             # Determine active branch
             try:
                 branch = repo.active_branch.name
+                logger.info(f"Current active branch: {branch}")
             except:
-                branch = 'master'  # Default fallback
+                branch = 'main'  # Default fallback
+                logger.info(f"No active branch detected, using default: {branch}")
 
             # Verify branch exists
             if f'origin/{branch}' not in repo.references:
+                logger.warning(f"Branch origin/{branch} not found, searching for available branches")
                 # Try to find any existing branch
+                available_branches = []
                 for ref in repo.references:
                     if ref.name.startswith('origin/'):
-                        branch = ref.name.split('/')[-1]
-                        break
+                        available_branches.append(ref.name.split('/')[-1])
+                
+                if available_branches:
+                    branch = available_branches[0]
+                    logger.info(f"Found available branches: {available_branches}, using {branch}")
                 else:
                     raise Exception("No remote branches found")
 
             # Reset to remote branch
+            logger.info(f"Resetting to origin/{branch}")
             repo.git.reset('--hard', f'origin/{branch}')
 
         except git.exc.InvalidGitRepositoryError:
@@ -103,11 +111,17 @@ def setup_git_repo():
             origin.fetch()
 
             # Determine available branch
-            branch = 'master'  # Default
+            branch = 'main'  # Default
+            available_branches = []
             for ref in origin.refs:
                 if ref.name.startswith('origin/'):
-                    branch = ref.name.split('/')[-1]
-                    break
+                    available_branches.append(ref.name.split('/')[-1])
+            
+            if available_branches:
+                branch = available_branches[0]
+                logger.info(f"Found available branches: {available_branches}, using {branch}")
+            else:
+                logger.warning("No remote branches found, using default 'main'")
 
             # Checkout branch
             repo.create_head(branch, origin.refs[branch])
