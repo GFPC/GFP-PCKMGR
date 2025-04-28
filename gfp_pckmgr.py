@@ -560,15 +560,24 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
                 "The bot will restart momentarily."
             )
             
-            # Restart the services
-            logger.info("Restarting services")
+            # Stop and start services
+            logger.info("Stopping services...")
             try:
-                subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
-                subprocess.run(['systemctl', 'restart', 'gfp-pckmgr-updater'], check=True)
+                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr'], check=True)
+                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr-updater'], check=True)
             except subprocess.CalledProcessError as e:
-                # Ignore SIGTERM from systemctl restart
                 if e.returncode == -15:  # SIGTERM
-                    logger.info("Services restart initiated successfully")
+                    logger.info("Services stopped successfully")
+                else:
+                    raise
+            
+            logger.info("Starting services...")
+            try:
+                subprocess.run(['systemctl', 'start', 'gfp-pckmgr-updater'], check=True)
+                subprocess.run(['systemctl', 'start', 'gfp-pckmgr'], check=True)
+            except subprocess.CalledProcessError as e:
+                if e.returncode == -15:  # SIGTERM
+                    logger.info("Services started successfully")
                 else:
                     raise
             
