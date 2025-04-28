@@ -61,7 +61,7 @@ def setup_git_repo():
 
             # Reset any local changes
             repo.git.reset('--hard')
-            repo.git.clean('-fd', '--exclude=backup')
+            repo.git.clean('-fd', '--exclude=backup', '--exclude=.env')
 
             # Configure remote
             if 'origin' not in repo.remotes:
@@ -100,6 +100,9 @@ def setup_git_repo():
             # Reset to remote branch
             logger.info(f"Resetting to origin/{branch}")
             repo.git.reset('--hard', f'origin/{branch}')
+            # Ensure .env file is preserved
+            if os.path.exists(os.path.join(REPO_PATH, '.env')):
+                logger.info("Preserving .env file")
 
         except git.exc.InvalidGitRepositoryError:
             # Initialize new repository
@@ -128,6 +131,9 @@ def setup_git_repo():
             repo.heads[branch].set_tracking_branch(origin.refs[branch])
             repo.heads[branch].checkout()
             repo.git.reset('--hard', f'origin/{branch}')
+            # Ensure .env file is preserved
+            if os.path.exists(os.path.join(REPO_PATH, '.env')):
+                logger.info("Preserving .env file")
 
         # Configure git user
         with repo.config_writer() as git_config:
