@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 REPO_PATH = '/opt/gfp-pckmgr'
 REMOTE_URL = 'https://github.com/GFPC/GFP-PCKMGR.git'
-CHECK_INTERVAL = 300  # 5 minutes
+CHECK_INTERVAL = 60  # 1 minute
 
 
 def backup_local_files():
@@ -190,7 +190,8 @@ def check_updates(repo):
 
         # Apply updates
         logger.info(f"Update available! Local: {current_commit.hexsha[:7]}, Remote: {remote_commit.hexsha[:7]}")
-        logger.info(f"Commit message: {remote_commit.message.split('\n')[0]}")
+        commit_message = remote_commit.message.splitlines()[0]
+        logger.info(f"Commit message: {commit_message}")
 
         # Backup local changes
         if not backup_local_files():
