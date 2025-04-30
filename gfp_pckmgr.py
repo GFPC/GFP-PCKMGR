@@ -195,7 +195,7 @@ async def execute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     command = ' '.join(context.args)
-    await _execute_and_reply(update, command)
+    await _execute_and_reply(update, context, command)
 
 async def cmd_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enter command mode."""
@@ -237,7 +237,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Exited command mode.")
             return
         
-        await _execute_and_reply(update, command)
+        await _execute_and_reply(update, context, command)
     else:
         # If not in command mode and message is not a command, show unknown command message
         if not update.message.text.startswith('/'):
@@ -251,7 +251,7 @@ async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(UNKNOWN_COMMAND_MESSAGE)
 
-async def _execute_and_reply(update: Update, command: str):
+async def _execute_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, command: str):
     """Execute a command and send the response."""
     start_time = time.time()
     try:
