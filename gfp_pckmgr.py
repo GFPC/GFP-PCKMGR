@@ -563,17 +563,13 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
                 "The bot will restart momentarily."
             )
             
-            # Get the bot's process ID
-            try:
-                pid = int(subprocess.check_output(['pgrep', '-f', 'gfp_pckmgr.py']).decode().strip())
-                logger.info(f"Found bot process with PID: {pid}")
-                # Send SIGTERM to gracefully stop the bot
-                os.kill(pid, 15)
-                logger.info("Sent SIGTERM to bot process")
-            except Exception as e:
-                logger.error(f"Error finding/killing bot process: {str(e)}")
-                # Fallback to systemctl if process not found
-                subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
+            # Create restart trigger file
+            restart_file = '/opt/gfp-pckmgr/.restart_trigger'
+            with open(restart_file, 'w') as f:
+                f.write(str(int(time.time())))
+            
+            # Exit the bot process
+            os._exit(0)
             
         except Exception as e:
             logger.error(f"Error during update: {str(e)}")
