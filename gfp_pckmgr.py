@@ -563,26 +563,17 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
                 "The bot will restart momentarily."
             )
             
-            # Stop services
-            logger.info("Stopping services...")
+            # Get the bot's process ID
             try:
-                # Stop services with shorter timeout
-                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr'], timeout=3, check=True)
-                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr-updater'], timeout=3, check=True)
-            except subprocess.TimeoutExpired:
-                logger.warning("Graceful stop timed out, forcing stop...")
-                # Force stop if timeout
-                subprocess.run(['systemctl', 'kill', '--signal=SIGKILL', 'gfp-pckmgr'], check=True)
-                subprocess.run(['systemctl', 'kill', '--signal=SIGKILL', 'gfp-pckmgr-updater'], check=True)
-            
-            # Reset failed state
-            subprocess.run(['systemctl', 'reset-failed', 'gfp-pckmgr'], check=False)
-            subprocess.run(['systemctl', 'reset-failed', 'gfp-pckmgr-updater'], check=False)
-            
-            # Start services
-            logger.info("Starting services...")
-            subprocess.run(['systemctl', 'start', 'gfp-pckmgr-updater'], check=True)
-            subprocess.run(['systemctl', 'start', 'gfp-pckmgr'], check=True)
+                pid = int(subprocess.check_output(['pgrep', '-f', 'gfp_pckmgr.py']).decode().strip())
+                logger.info(f"Found bot process with PID: {pid}")
+                # Send SIGTERM to gracefully stop the bot
+                os.kill(pid, 15)
+                logger.info("Sent SIGTERM to bot process")
+            except Exception as e:
+                logger.error(f"Error finding/killing bot process: {str(e)}")
+                # Fallback to systemctl if process not found
+                subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
             
         except Exception as e:
             logger.error(f"Error during update: {str(e)}")
