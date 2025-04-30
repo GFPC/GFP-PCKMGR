@@ -256,7 +256,7 @@ async def _execute_and_reply(update: Update, command: str):
     start_time = time.time()
     try:
         # Get current directory from context or use root
-        current_dir = update.effective_user.id in update._user_data and update._user_data[update.effective_user.id].get('current_dir', '/')
+        current_dir = context.user_data.get('current_dir', '/')
         
         # Change to the selected directory before executing command
         os.chdir(current_dir)
