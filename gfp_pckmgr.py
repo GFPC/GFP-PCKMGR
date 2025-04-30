@@ -563,65 +563,26 @@ async def handle_update_button(update: Update, context: ContextTypes.DEFAULT_TYP
                 "The bot will restart momentarily."
             )
             
-            # Stop services with timeout
+            # Stop services
             logger.info("Stopping services...")
             try:
-                # Try graceful stop first
-                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr'], timeout=5, check=True)
-                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr-updater'], timeout=5, check=True)
+                # Stop services with shorter timeout
+                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr'], timeout=3, check=True)
+                subprocess.run(['systemctl', 'stop', 'gfp-pckmgr-updater'], timeout=3, check=True)
             except subprocess.TimeoutExpired:
                 logger.warning("Graceful stop timed out, forcing stop...")
                 # Force stop if timeout
                 subprocess.run(['systemctl', 'kill', '--signal=SIGKILL', 'gfp-pckmgr'], check=True)
                 subprocess.run(['systemctl', 'kill', '--signal=SIGKILL', 'gfp-pckmgr-updater'], check=True)
-            except subprocess.CalledProcessError as e:
-                if e.returncode == -15:  # SIGTERM
-                    logger.info("Services stopped successfully")
-                else:
-                    raise
             
-            # Ensure services are stopped
+            # Reset failed state
             subprocess.run(['systemctl', 'reset-failed', 'gfp-pckmgr'], check=False)
             subprocess.run(['systemctl', 'reset-failed', 'gfp-pckmgr-updater'], check=False)
             
+            # Start services
             logger.info("Starting services...")
-            try:
-                # Start services in correct order
-                subprocess.run(['systemctl', 'start', 'gfp-pckmgr-updater'], check=True)
-                
-                # Wait for updater to be active
-                max_attempts = 5
-                for attempt in range(max_attempts):
-                    result = subprocess.run(['systemctl', 'is-active', 'gfp-pckmgr-updater'], 
-                                         capture_output=True, text=True)
-                    if result.stdout.strip() == 'active':
-                        break
-                    time.sleep(1)
-                
-                # Start bot service
-                subprocess.run(['systemctl', 'start', 'gfp-pckmgr'], check=True)
-                
-                # Wait for bot to be active
-                max_attempts = 10
-                for attempt in range(max_attempts):
-                    result = subprocess.run(['systemctl', 'is-active', 'gfp-pckmgr'], 
-                                         capture_output=True, text=True)
-                    if result.stdout.strip() == 'active':
-                        break
-                    time.sleep(1)
-                
-                # If services are not active after waiting, try to restart them
-                result = subprocess.run(['systemctl', 'is-active', 'gfp-pckmgr'], 
-                                     capture_output=True, text=True)
-                if result.stdout.strip() != 'active':
-                    logger.warning("Bot service not active, trying to restart...")
-                    subprocess.run(['systemctl', 'restart', 'gfp-pckmgr'], check=True)
-                
-            except subprocess.CalledProcessError as e:
-                if e.returncode == -15:  # SIGTERM
-                    logger.info("Services started successfully")
-                else:
-                    raise
+            subprocess.run(['systemctl', 'start', 'gfp-pckmgr-updater'], check=True)
+            subprocess.run(['systemctl', 'start', 'gfp-pckmgr'], check=True)
             
         except Exception as e:
             logger.error(f"Error during update: {str(e)}")
