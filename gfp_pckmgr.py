@@ -724,6 +724,15 @@ async def check_pending_updates(context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Start the bot."""
+    # Clean up restart trigger file if it exists
+    restart_file = '/opt/gfp-pckmgr/.restart_trigger'
+    if os.path.exists(restart_file):
+        try:
+            os.remove(restart_file)
+            logger.info("Cleaned up restart trigger file")
+        except Exception as e:
+            logger.error(f"Error cleaning up restart trigger file: {str(e)}")
+    
     if not BOT_TOKEN:
         logger.error("BOT_TOKEN not found in environment variables")
         return
